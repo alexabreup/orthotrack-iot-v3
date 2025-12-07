@@ -86,10 +86,10 @@ func Load() *Config {
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
-			Name:     getEnv("DB_NAME", "orthotrack_v3"),
-			User:     getEnv("DB_USER", "orthotrack"),
-			Password: getEnv("DB_PASSWORD", "password"),
-			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+			Name:     getEnvRequired("DB_NAME"),
+			User:     getEnvRequired("DB_USER"),
+			Password: getEnvRequired("DB_PASSWORD"),
+			SSLMode:  getEnv("DB_SSL_MODE", "require"), // Default mais seguro
 		},
 		Redis: RedisConfig{
 			Host:     getEnv("REDIS_HOST", "localhost"),
@@ -98,7 +98,7 @@ func Load() *Config {
 			DB:       redisDB,
 		},
 		JWT: JWTConfig{
-			Secret:      getEnv("JWT_SECRET", "orthotrack-secret-key"),
+			Secret:      getEnvRequired("JWT_SECRET"),
 			ExpireHours: jwtExpire,
 		},
 		AI: AIConfig{
@@ -107,10 +107,10 @@ func Load() *Config {
 			DefaultModel: getEnv("AI_DEFAULT_MODEL", "openai"),
 		},
 		MQTT: MQTTConfig{
-			BrokerURL: getEnv("MQTT_BROKER_URL", "tcp://localhost:1883"),
+			BrokerURL: getEnvRequired("MQTT_BROKER_URL"),
 			ClientID:  getEnv("MQTT_CLIENT_ID", "orthotrack-backend"),
-			Username:  getEnv("MQTT_USERNAME", ""),
-			Password:  getEnv("MQTT_PASSWORD", ""),
+			Username:  getEnvRequired("MQTT_USERNAME"),
+			Password:  getEnvRequired("MQTT_PASSWORD"),
 		},
 		IoT: IoTConfig{
 			GatewayEnabled:     getEnv("IOT_GATEWAY_ENABLED", "true") == "true",
@@ -132,4 +132,12 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+func getEnvRequired(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("Required environment variable %s is not set", key)
+	}
+	return value
 }

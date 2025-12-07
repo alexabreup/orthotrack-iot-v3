@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -74,14 +75,36 @@ func main() {
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
-	// CORS
+	// CORS - Configuração segura
 	corsConfig := cors.DefaultConfig()
-	corsConfig.AllowOrigins = []string{"*"}
+	// Origens permitidas (ajuste conforme necessário)
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" {
+		// Default para desenvolvimento local
+		corsConfig.AllowOrigins = []string{
+			"http://localhost:3000",
+			"http://localhost:5173",
+			"https://dashboard.orthotrack.aacd.org.br",
+			"https://admin.orthotrack.aacd.org.br",
+		}
+	} else {
+		corsConfig.AllowOrigins = strings.Split(allowedOrigins, ",")
+	}
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
-	corsConfig.AllowHeaders = []string{"*"}
+	corsConfig.AllowHeaders = []string{
+		"Origin", "Content-Length", "Content-Type", "Authorization",
+		"X-Device-API-Key", "Accept", "X-Requested-With",
+	}
 	corsConfig.AllowCredentials = true
 	router.Use(cors.New(corsConfig))
 
+	// Rate Limiting - 100 req/sec burst 200
+	globalRateLimit := middleware.NewRateLimiter(100, 200)
+	router.Use(globalRateLimit.Middleware())
+	
+	// Per-IP Rate Limiting - 10 req/sec burst 20 
+	ipRateLimit := middleware.NewIPRateLimiter(10, 20)
+	
 	// Middleware de autenticação
 	authMiddleware := middleware.NewAuthMiddleware(cfg.JWT.Secret)
 
@@ -93,8 +116,9 @@ func main() {
 	// Swagger documentation
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// Rotas públicas
+	// Rotas públicas - com rate limiting mais restritivo
 	public := router.Group("/api/v1")
+	public.Use(ipRateLimit.Middleware()) // Rate limiting por IP
 	{
 		public.POST("/auth/login", authHandler.Login)
 		public.GET("/health", healthCheck)

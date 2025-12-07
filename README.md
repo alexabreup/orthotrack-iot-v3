@@ -10,20 +10,22 @@ Esta é a terceira versão da plataforma OrtoTrack IoT, combinando:
 - **Frontend Svelte** para dashboard administrativo
 - **Aplicativo Android** como Node Edge para comunicação direta com ESP32
 
-## 🏗️ Arquitetura
+## 🏗️ Arquitetura (CORRIGIDA - v3.1)
 
 ```
-┌─────────────────┐    BLE     ┌─────────────────┐    HTTPS    ┌─────────────────┐
-│  ESP32 Device   │ ←-------→  │ Android Edge    │ ←--------→  │  Backend API    │
-│ (Colete AACD)   │            │ Node (Gateway)  │            │ (Go + PostgreSQL)│
-└─────────────────┘            └─────────────────┘            └─────────────────┘
-                                       ↑                              ↑
-                                   WiFi/4G                         HTTPS
-                                       ↓                              ↓
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                           Admin Dashboard (Svelte)                             │
-│           ← Real-time monitoring, Analytics, AI Reports →                      │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────┐    WiFi/HTTPS   ┌─────────────────┐    PostgreSQL   ┌─────────────────┐
+│  ESP32 Device   │ ←─────────────→ │  Backend API    │ ←─────────────→ │    Database     │
+│ (Colete AACD)   │  Direct Connect │ (Go + Redis)    │                │   + Redis       │
+└─────────────────┘                └─────────┬───────┘                └─────────────────┘
+                                             │
+                                        HTTPS │
+                                             │
+┌────────────────────────────────────────────▼────────────────────────────────────────────┐
+│                           Admin Dashboard (Svelte)                                       │
+│           ← Real-time monitoring, Analytics, LGPD Compliance →                           │
+└───────────────────────────────────────────────────────────────────────────────────────────┘
+
+✅ CORREÇÃO APLICADA: Removido Android Edge Node (arquitetura simplificada e mais confiável)
 ```
 
 ## 📁 Estrutura do Projeto
@@ -48,19 +50,18 @@ orthotrack-iot-v3/
 │   │   └── stores/            # Stores Svelte
 │   └── static/                # Arquivos estáticos
 │
-├── android-edge-node/         # Aplicativo Android (Node Edge)
-│   ├── app/                   # Código principal do app
-│   ├── esp32-ble/            # Módulo BLE para ESP32
-│   ├── api-client/           # Cliente para API backend
-│   └── offline-storage/      # Armazenamento offline
+├── android-edge-node/         # ❌ REMOVIDO (conforme análise)
+│   # Edge Node removido para simplificar arquitetura
 │
-├── esp32-firmware/           # Firmware ESP32 (baseado no v1)
-│   ├── src/                  # Código fonte C++
-│   │   ├── sensors/          # Drivers de sensores
-│   │   ├── ble/              # Comunicação Bluetooth
-│   │   ├── ai/               # TinyML para detecção
-│   │   └── power/            # Gerenciamento de energia
-│   └── platformio.ini        # Configuração PlatformIO
+├── esp32-firmware/           # ✅ Firmware ESP32 CORRIGIDO
+│   ├── src/
+│   │   └── main.cpp          # Código principal com WiFi direto
+│   ├── platformio.ini        # Configuração PlatformIO
+│   │   # SENSORES CORRIGIDOS:
+│   │   # ✅ MPU6050 (acelerômetro/giroscópio)
+│   │   # ✅ BMP280 (temperatura/pressão médica)
+│   │   # ❌ DHT22 removido (não medical-grade)
+│   │   # ❌ Hall Effect removido (sem uso claro)
 │
 ├── docs/                     # Documentação geral
 ├── docker-compose.yml        # Orquestração de serviços
@@ -224,34 +225,42 @@ MQTT_BROKER_URL=tcp://localhost:1883
 - **Institution**: Instituição médica
 - **MedicalStaff**: Profissionais de saúde
 
-## 🔒 Segurança
+## 🔒 Segurança (CORRIGIDA - v3.1)
 
-- Autenticação JWT para APIs
-- Criptografia AES para dados sensíveis
-- HTTPS obrigatório em produção
-- Rate limiting nas APIs
-- Validação rigorosa de inputs
-- Logs de auditoria
+### ✅ **IMPLEMENTADO**
+- **JWT seguro**: Chave obrigatória via ambiente (não hardcoded)
+- **CORS restritivo**: Apenas origens específicas permitidas
+- **Rate limiting**: Global (100 req/s) + IP (10 req/s) 
+- **LGPD Compliance**: Modelos de consentimento e auditoria
+- **Validação obrigatória**: Variáveis críticas requeridas
+- **MQTT autenticado**: Username/password obrigatórios
+- **HTTPS obrigatório**: SSL mode = require por padrão
 
-## 📱 Aplicativo Android - Recursos
+### 📋 **LGPD/HIPAA COMPLIANCE**
+```go
+// Novos campos nos pacientes
+ConsentGivenAt, ConsentWithdrawnAt
+DataRetentionUntil, AnonymizedAt
+LegalBasis, LastAccessedAt, AccessCount
 
-### Comunicação BLE
-- Scan automático de dispositivos ESP32
-- Conexão e pareamento seguro
-- Troca de dados em tempo real
-- Gerenciamento de múltiplas conexões
+// Logs de auditoria
+AuditLog: Rastreamento de todos os acessos
+ConsentLog: Histórico completo de consentimentos
+```
 
-### Edge Computing
-- Processamento local de dados
-- Cache inteligente
-- Sincronização offline-first
-- Compressão de dados
+## 📡 ESP32 - Comunicação Direta (NOVO)
 
-### Interface do Usuário
-- Dashboard em tempo real
-- Configuração de dispositivos
-- Monitoramento de status
-- Logs de atividade
+### WiFi Direct to Backend
+- Conexão direta ESP32 → Backend via WiFi
+- Eliminação do Android Edge Node
+- Menor latência e maior confiabilidade
+- Protocolo HTTPS com autenticação via API Key
+
+### Detecção Inteligente de Uso
+- Algoritmo multi-sensor para detectar uso do colete
+- Temperatura corporal (30-40°C) + movimento
+- Filtro de 5 leituras consecutivas para evitar falsos positivos
+- Alertas automáticos de mudança de estado
 
 ## 🚀 Deployment
 

@@ -45,6 +45,18 @@ type Patient struct {
 	Status                  string           `json:"status" gorm:"size:20;default:active;check:status IN ('active','inactive','completed','suspended')"`
 	IsActive                bool             `json:"is_active" gorm:"default:true"`
 	
+	// LGPD Compliance
+	ConsentGivenAt          *time.Time       `json:"consent_given_at" gorm:"index"`
+	ConsentWithdrawnAt      *time.Time       `json:"consent_withdrawn_at"`
+	ConsentDocument         string           `json:"consent_document" gorm:"type:text"` // Base64 do termo assinado
+	DataRetentionUntil      *time.Time       `json:"data_retention_until" gorm:"index"`
+	AnonymizedAt            *time.Time       `json:"anonymized_at"`
+	LegalBasis              string           `json:"legal_basis" gorm:"size:100;default:medical_treatment"`
+	
+	// Auditoria LGPD
+	LastAccessedAt          *time.Time       `json:"last_accessed_at"`
+	AccessCount             int              `json:"access_count" gorm:"default:0"`
+	
 	CreatedAt               time.Time        `json:"created_at"`
 	UpdatedAt               time.Time        `json:"updated_at"`
 	DeletedAt               gorm.DeletedAt   `json:"-" gorm:"index"`
