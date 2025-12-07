@@ -1,0 +1,43 @@
+{
+  "name": "orthotrack-edge-node",
+  "version": "3.0.0",
+  "description": "Android Edge Node para OrthoTrack IoT Platform - Gateway BLE para ESP32",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "cap:sync": "cap sync",
+    "cap:copy": "cap copy",
+    "cap:open:android": "cap open android",
+    "cap:run:android": "cap run android",
+    "android:dev": "npm run build && npm run cap:sync && npm run cap:open:android",
+    "android:localhost": "./run-localhost.sh"
+  },
+  "keywords": [
+    "capacitor",
+    "android",
+    "ble",
+    "iot",
+    "edge-node",
+    "orthotrack"
+  ],
+  "author": "OrthoTrack Team",
+  "license": "MIT",
+  "dependencies": {
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/network": "^6.0.2",
+    "@capacitor/preferences": "^6.0.2",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.2",
+    "@capacitor/toast": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.1.2",
+    "typescript": "^5.2.2",
+    "vite": "^5.0.0"
+  }
+}

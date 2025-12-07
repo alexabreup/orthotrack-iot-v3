@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # Banco de dados PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: orthotrack-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-orthotrack}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d/
+    ports:
+      - "5432:5432"
+    networks:
+      - orthotrack-network
+
+  # Redis para cache e pub/sub
+  redis:
+    image: redis:7-alpine
+    container_name: orthotrack-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - orthotrack-network
+
+  # MQTT Broker (Eclipse Mosquitto)
+  mqtt:
+    image: eclipse-mosquitto:2.0-openssl
+    container_name: orthotrack-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mqtt_data:/mosquitto/data
+      - mqtt_logs:/mosquitto/log
+    networks:
+      - orthotrack-network
+
+  # Backend API
+  backend:
+    build: .
+    container_name: orthotrack-backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-orthotrack}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      
+      # MQTT
+      MQTT_HOST: mqtt
+      MQTT_PORT: 1883
+      MQTT_USERNAME: ${MQTT_USERNAME:-orthotrack}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-mqtt123}
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      
+      # Server
+      PORT: 8080
+      GIN_MODE: ${GIN_MODE:-release}
+      
+      # IoT Configuration
+      IOT_ALERT_BATTERY_LOW: ${IOT_ALERT_BATTERY_LOW:-20}
+      IOT_ALERT_TEMP_HIGH: ${IOT_ALERT_TEMP_HIGH:-45.0}
+      IOT_ALERT_TEMP_LOW: ${IOT_ALERT_TEMP_LOW:-5.0}
+      
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+      - mqtt
+    networks:
+      - orthotrack-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  mqtt_data:
+  mqtt_logs:
+
+networks:
+  orthotrack-network:
+    driver: bridge
