@@ -24,7 +24,7 @@ type Patient struct {
 	GuardianPhone           string           `json:"guardian_phone" gorm:"size:20"`
 	
 	// Dados Médicos
-	MedicalRecord           string           `json:"medical_record" gorm:"size:50;uniqueIndex;not null"`
+	MedicalRecord           string           `json:"medical_record" gorm:"size:50;uniqueIndex"`
 	DiagnosisCode           string           `json:"diagnosis_code" gorm:"size:20"`
 	SeverityLevel           int              `json:"severity_level" gorm:"check:severity_level BETWEEN 1 AND 5"`
 	ScoliosisType           string           `json:"scoliosis_type" gorm:"size:50"`
@@ -32,7 +32,7 @@ type Patient struct {
 	// Prescrição
 	PrescriptionHours       int              `json:"prescription_hours" gorm:"default:16"` // Horas/dia prescritas
 	DailyUsageTargetMinutes int              `json:"daily_usage_target_minutes" gorm:"default:960"` // 16 horas em minutos
-	TreatmentStart          time.Time        `json:"treatment_start"`
+	TreatmentStart          *time.Time       `json:"treatment_start,omitempty"`
 	TreatmentEnd            *time.Time       `json:"treatment_end,omitempty"`
 	BracePrescriptionDate   *time.Time       `json:"brace_prescription_date,omitempty"`
 	PrescriptionNotes       string           `json:"prescription_notes" gorm:"type:text"`

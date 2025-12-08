@@ -30,13 +30,13 @@ type CreatePatientRequest struct {
 	Phone                 string     `json:"phone"`
 	GuardianName          string     `json:"guardian_name"`
 	GuardianPhone         string     `json:"guardian_phone"`
-	MedicalRecord         string     `json:"medical_record" binding:"required"`
+	MedicalRecord         string     `json:"medical_record"`
 	DiagnosisCode         string     `json:"diagnosis_code"`
 	SeverityLevel         int        `json:"severity_level"`
 	ScoliosisType         string     `json:"scoliosis_type"`
 	PrescriptionHours     int        `json:"prescription_hours"`
 	DailyUsageTargetMinutes int       `json:"daily_usage_target_minutes"`
-	TreatmentStart        time.Time  `json:"treatment_start"`
+	TreatmentStart        *time.Time  `json:"treatment_start"`
 	PrescriptionNotes     string     `json:"prescription_notes"`
 }
 
@@ -135,9 +135,12 @@ func (h *PatientHandler) CreatePatient(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := validators.ValidateRequired(req.MedicalRecord, "medical_record"); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	// Medical record é opcional, mas se fornecido não pode ser vazio
+	if req.MedicalRecord != "" {
+		if err := validators.ValidateRequired(req.MedicalRecord, "medical_record"); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 	if req.CPF != "" {
 		if err := validators.ValidateCPF(req.CPF); err != nil {
@@ -195,10 +198,12 @@ func (h *PatientHandler) CreatePatient(c *gin.Context) {
 		return
 	}
 	
-	// Verificar se medical_record já existe
-	if err := h.db.Where("medical_record = ?", req.MedicalRecord).First(&existing).Error; err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Paciente com este prontuário já existe"})
-		return
+	// Verificar se medical_record já existe (apenas se foi fornecido)
+	if req.MedicalRecord != "" {
+		if err := h.db.Where("medical_record = ?", req.MedicalRecord).First(&existing).Error; err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "Paciente com este prontuário já existe"})
+			return
+		}
 	}
 	
 	// Obter institution_id do token JWT
