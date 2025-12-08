@@ -1,20 +1,25 @@
 <script lang="ts">
+	import { cn } from '$lib/utils';
+
 	type Variant = 'default' | 'success' | 'warning' | 'danger' | 'info';
 	
 	export let variant: Variant = 'default';
-	
-	let className = '';
+	export let className = '';
 	
 	$: {
 		const variants: Record<Variant, string> = {
 			default: 'bg-secondary text-secondary-foreground',
-			success: 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100',
-			warning: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100',
-			danger: 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100',
-			info: 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100',
+			success: 'bg-success/10 text-success',
+			warning: 'bg-warning/10 text-warning',
+			danger: 'bg-destructive/10 text-destructive',
+			info: 'bg-info/10 text-info',
 		};
 		
-		className = `inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors ${variants[variant]}`;
+		className = cn(
+			'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors',
+			variants[variant],
+			className
+		);
 	}
 </script>
 

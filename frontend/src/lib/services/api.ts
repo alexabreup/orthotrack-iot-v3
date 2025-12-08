@@ -2,6 +2,7 @@
  * Cliente HTTP base para comunicação com a API
  */
 
+// Para desenvolvimento, usar localhost se não especificado
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 export interface ApiError {
@@ -36,43 +37,56 @@ export class ApiClient {
 		}
 
 		const url = `${this.baseURL}${endpoint}`;
-		const response = await fetch(url, {
-			...options,
-			headers,
-		});
+		
+		try {
+			const response = await fetch(url, {
+				...options,
+				headers,
+			});
 
-		if (!response.ok) {
-			const error: ApiError = {
-				message: `HTTP error! status: ${response.status}`,
-				status: response.status,
-			};
+			if (!response.ok) {
+				const error: ApiError = {
+					message: `HTTP error! status: ${response.status}`,
+					status: response.status,
+				};
 
-			try {
-				const data = await response.json();
-				error.message = data.error || data.message || error.message;
-			} catch {
-				// Se não conseguir parsear JSON, usar mensagem padrão
-			}
-
-			// Se não autorizado, limpar token
-			if (response.status === 401) {
-				localStorage.removeItem('auth_token');
-				localStorage.removeItem('auth_user');
-				if (typeof window !== 'undefined') {
-					window.location.href = '/login';
+				try {
+					const data = await response.json();
+					error.message = data.error || data.message || error.message;
+				} catch {
+					// Se não conseguir parsear JSON, usar mensagem padrão
 				}
+
+				// Se não autorizado, limpar token
+				if (response.status === 401) {
+					localStorage.removeItem('auth_token');
+					localStorage.removeItem('auth_user');
+					if (typeof window !== 'undefined') {
+						window.location.href = '/login';
+					}
+				}
+
+				throw error;
 			}
 
+			// Se resposta vazia, retornar null
+			const contentType = response.headers.get('content-type');
+			if (!contentType || !contentType.includes('application/json')) {
+				return null as T;
+			}
+
+			return response.json();
+		} catch (error) {
+			// Se for um erro de rede (Failed to fetch)
+			if (error instanceof TypeError && error.message === 'Failed to fetch') {
+				const networkError: ApiError = {
+					message: `Não foi possível conectar ao servidor. Verifique se o backend está rodando em ${this.baseURL}`,
+					status: 0,
+				};
+				throw networkError;
+			}
 			throw error;
 		}
-
-		// Se resposta vazia, retornar null
-		const contentType = response.headers.get('content-type');
-		if (!contentType || !contentType.includes('application/json')) {
-			return null as T;
-		}
-
-		return response.json();
 	}
 
 	async get<T>(endpoint: string): Promise<T> {
@@ -99,5 +113,7 @@ export class ApiClient {
 }
 
 export const apiClient = new ApiClient();
+
+
 
 

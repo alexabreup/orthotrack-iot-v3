@@ -1,129 +1,169 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { alertsStore } from '$lib/stores/alerts.store';
-	import Button from '$lib/components/ui/Button.svelte';
+	import { alertsService } from '$lib/services/alerts.service';
+	import AlertCard from '$lib/components/alerts/AlertCard.svelte';
+	import AlertModal from '$lib/components/alerts/AlertModal.svelte';
+	import { LoadingSpinner, ErrorMessage, Pagination, SearchBar } from '$lib/components/common';
 	import Card from '$lib/components/ui/Card.svelte';
-	import Badge from '$lib/components/ui/Badge.svelte';
-	
+	import StatsCard from '$lib/components/dashboard/StatsCard.svelte';
+	import { AlertCircle, TrendingUp, CheckCircle2 } from 'lucide-svelte';
+	import type { Alert, AlertStatistics } from '$lib/types/alert';
+
+	let alerts: Alert[] = [];
+	let statistics: AlertStatistics | null = null;
+	let loading = true;
+	let error: string | null = null;
+	let currentPage = 1;
+	let totalPages = 1;
+	let searchQuery = '';
+	let selectedAlert: Alert | null = null;
+	let modalOpen = false;
+	let severityFilter: string | undefined = undefined;
+	let resolvedFilter: boolean | undefined = undefined;
+
 	onMount(() => {
-		alertsStore.fetchAlerts();
-		alertsStore.fetchStatistics();
+		loadData();
 	});
-	
-	function getSeverityBadge(severity: string) {
-		const variants = {
-			critical: 'danger',
-			high: 'warning',
-			medium: 'info',
-			low: 'success',
-		} as const;
-		return variants[severity as keyof typeof variants] || 'default';
-	}
-	
-	async function handleResolve(alertId: number) {
+
+	async function loadData() {
+		loading = true;
+		error = null;
 		try {
-			await alertsStore.resolveAlert(alertId);
-		} catch (error) {
-			console.error('Erro ao resolver alerta:', error);
+			const [alertsResponse, stats] = await Promise.all([
+				alertsService.list({
+					page: currentPage,
+					severity: severityFilter as any,
+					resolved: resolvedFilter,
+				}),
+				alertsService.getStatistics('24h'),
+			]);
+			alerts = alertsResponse.data;
+			totalPages = alertsResponse.total_pages;
+			statistics = stats;
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Erro ao carregar alertas';
+		} finally {
+			loading = false;
 		}
+	}
+
+	async function handleResolve(id: number, notes: string = '') {
+		try {
+			await alertsService.resolve(id, notes);
+			await loadData();
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Erro ao resolver alerta';
+		}
+	}
+
+	function openModal(alert: Alert) {
+		selectedAlert = alert;
+		modalOpen = true;
+	}
+
+	function closeModal() {
+		modalOpen = false;
+		selectedAlert = null;
 	}
 </script>
 
-<div class="p-8">
-	<div class="mb-8">
+<div class="space-y-6">
+	<div>
 		<h1 class="text-3xl font-bold">Alertas</h1>
 		<p class="mt-2 text-muted-foreground">Gerenciamento de alertas do sistema</p>
 	</div>
-	
-	{#if $alertsStore.statistics}
-		<div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
-			<Card className="p-4">
-				<div class="text-sm text-muted-foreground">Total</div>
-				<div class="mt-1 text-2xl font-bold">{$alertsStore.statistics.total}</div>
-			</Card>
-			<Card className="p-4">
-				<div class="text-sm text-muted-foreground">Críticos</div>
-				<div class="mt-1 text-2xl font-bold text-red-600">
-					{$alertsStore.statistics.by_severity.critical}
-				</div>
-			</Card>
-			<Card className="p-4">
-				<div class="text-sm text-muted-foreground">Altos</div>
-				<div class="mt-1 text-2xl font-bold text-orange-600">
-					{$alertsStore.statistics.by_severity.high}
-				</div>
-			</Card>
-			<Card className="p-4">
-				<div class="text-sm text-muted-foreground">Não Resolvidos</div>
-				<div class="mt-1 text-2xl font-bold">{$alertsStore.statistics.unresolved}</div>
-			</Card>
+
+	{#if statistics}
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+			<StatsCard title="Total" value={statistics.total} icon={AlertCircle} />
+			<StatsCard
+				title="Críticos"
+				value={statistics.by_severity.critical}
+				icon={AlertCircle}
+			/>
+			<StatsCard title="Altos" value={statistics.by_severity.high} icon={TrendingUp} />
+			<StatsCard
+				title="Não Resolvidos"
+				value={statistics.by_severity.critical + statistics.by_severity.high}
+				icon={CheckCircle2}
+			/>
 		</div>
 	{/if}
-	
-	{#if $alertsStore.loading}
+
+	<div class="flex gap-4">
+		<div class="flex-1">
+			<SearchBar placeholder="Buscar alertas..." onSearch={(q) => { searchQuery = q; loadData(); }} />
+		</div>
+		<select
+			bind:value={severityFilter}
+			on:change={loadData}
+			class="rounded-md border border-input bg-background px-3 py-2 text-sm"
+		>
+			<option value={undefined}>Todas as severidades</option>
+			<option value="critical">Crítico</option>
+			<option value="high">Alto</option>
+			<option value="medium">Médio</option>
+			<option value="low">Baixo</option>
+		</select>
+		<select
+			bind:value={resolvedFilter}
+			on:change={loadData}
+			class="rounded-md border border-input bg-background px-3 py-2 text-sm"
+		>
+			<option value={undefined}>Todos</option>
+			<option value={false}>Não Resolvidos</option>
+			<option value={true}>Resolvidos</option>
+		</select>
+	</div>
+
+	{#if loading}
 		<div class="flex items-center justify-center py-12">
-			<div class="loading-spinner h-8 w-8"></div>
+			<LoadingSpinner size="lg" />
 		</div>
-	{:else if $alertsStore.error}
-		<div class="rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
-			{$alertsStore.error}
-		</div>
-	{:else if $alertsStore.alerts.length === 0}
-		<Card className="p-12 text-center">
+	{:else if error}
+		<ErrorMessage message={error} onRetry={loadData} />
+	{:else if alerts.length === 0}
+		<Card class="p-12 text-center">
 			<p class="text-muted-foreground">Nenhum alerta encontrado</p>
 		</Card>
 	{:else}
-		<Card className="overflow-hidden">
-			<div class="overflow-x-auto">
-				<table class="w-full">
-					<thead class="border-b bg-muted/50">
-						<tr>
-							<th class="px-6 py-3 text-left text-sm font-medium">Severidade</th>
-							<th class="px-6 py-3 text-left text-sm font-medium">Título</th>
-							<th class="px-6 py-3 text-left text-sm font-medium">Dispositivo</th>
-							<th class="px-6 py-3 text-left text-sm font-medium">Data</th>
-							<th class="px-6 py-3 text-left text-sm font-medium">Status</th>
-							<th class="px-6 py-3 text-left text-sm font-medium">Ações</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each $alertsStore.alerts as alert}
-							<tr class="border-b hover:bg-muted/50">
-								<td class="px-6 py-4">
-									<Badge variant={getSeverityBadge(alert.severity)}>
-										{alert.severity}
-									</Badge>
-								</td>
-								<td class="px-6 py-4">
-									<div class="font-medium">{alert.title}</div>
-									<div class="text-sm text-muted-foreground">{alert.message}</div>
-								</td>
-								<td class="px-6 py-4 text-sm">
-									{alert.device_serial || 'N/A'}
-								</td>
-								<td class="px-6 py-4 text-sm">
-									{new Date(alert.created_at).toLocaleString('pt-BR')}
-								</td>
-								<td class="px-6 py-4">
-									{#if alert.resolved}
-										<Badge variant="success">Resolvido</Badge>
-									{:else}
-										<Badge variant="warning">Pendente</Badge>
-									{/if}
-								</td>
-								<td class="px-6 py-4">
-									{#if !alert.resolved}
-										<Button variant="ghost" size="sm" on:click={() => handleResolve(alert.id)}>
-											Resolver
-										</Button>
-									{/if}
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
+		<div class="space-y-4">
+			{#each alerts as alert}
+				<div role="button" tabindex="0" on:click={() => openModal(alert)} on:keydown={(e) => e.key === 'Enter' && openModal(alert)}>
+					<AlertCard
+						{alert}
+						onResolve={async (id) => {
+							await handleResolve(id);
+						}}
+					/>
+				</div>
+			{/each}
+		</div>
+
+		{#if totalPages > 1}
+			<div class="mt-6">
+				<Pagination
+					currentPage={currentPage}
+					totalPages={totalPages}
+					onPageChange={(page) => {
+						currentPage = page;
+						loadData();
+					}}
+				/>
 			</div>
-		</Card>
+		{/if}
+	{/if}
+
+	{#if selectedAlert}
+		<AlertModal
+			alert={selectedAlert}
+			open={modalOpen}
+			onClose={closeModal}
+			onResolve={async (id, notes) => {
+				await handleResolve(id, notes);
+				closeModal();
+			}}
+		/>
 	{/if}
 </div>
 

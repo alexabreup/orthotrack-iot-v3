@@ -45,14 +45,19 @@ function createAuthStore() {
 			
 			try {
 				const response = await authService.login(email, password);
+				console.log('Auth service login response:', response);
+				
 				set({
 					isAuthenticated: true,
 					user: response.user,
 					loading: false,
 					error: null,
 				});
+				
+				console.log('Auth store updated, attempting redirect...');
 				goto('/');
 			} catch (error) {
+				console.error('Login error:', error);
 				const errorMessage = error instanceof Error ? error.message : 'Erro ao fazer login';
 				set({
 					isAuthenticated: false,
@@ -88,5 +93,10 @@ export const authStore = createAuthStore();
 
 export const isAuthenticated = derived(authStore, ($auth) => $auth.isAuthenticated);
 export const currentUser = derived(authStore, ($auth) => $auth.user);
+
+
+
+
+
 
 

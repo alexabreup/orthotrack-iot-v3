@@ -1,0 +1,53 @@
+{
+	"name": "OrthoTrack IoT Platform",
+	"short_name": "OrthoTrack",
+	"description": "Plataforma de monitoramento de coletes ortopédicos",
+	"start_url": "/",
+	"display": "standalone",
+	"background_color": "#000000",
+	"theme_color": "#000000",
+	"orientation": "portrait-primary",
+	"icons": [
+		{
+			"src": "/favicon.png",
+			"sizes": "32x32",
+			"type": "image/png",
+			"purpose": "any"
+		}
+	],
+	"categories": ["health", "medical"],
+	"shortcuts": [
+		{
+			"name": "Dashboard",
+			"short_name": "Dashboard",
+			"description": "Acessar o dashboard principal",
+			"url": "/",
+			"icons": [{ "src": "/favicon.png", "sizes": "32x32" }]
+		},
+		{
+			"name": "Pacientes",
+			"short_name": "Pacientes",
+			"description": "Gerenciar pacientes",
+			"url": "/patients",
+			"icons": [{ "src": "/favicon.png", "sizes": "32x32" }]
+		},
+		{
+			"name": "Dispositivos",
+			"short_name": "Dispositivos",
+			"description": "Gerenciar dispositivos",
+			"url": "/devices",
+			"icons": [{ "src": "/favicon.png", "sizes": "32x32" }]
+		},
+		{
+			"name": "Alertas",
+			"short_name": "Alertas",
+			"description": "Ver alertas",
+			"url": "/alerts",
+			"icons": [{ "src": "/favicon.png", "sizes": "32x32" }]
+		}
+	]
+}
+
+
+
+

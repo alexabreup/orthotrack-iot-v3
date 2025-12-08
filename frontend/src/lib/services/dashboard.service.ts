@@ -49,8 +49,17 @@ export class DashboardService {
 	async getRealtimeData(): Promise<RealtimeData> {
 		return apiClient.get<RealtimeData>('/api/v1/dashboard/realtime');
 	}
+
+	async getRealtime(deviceId?: string): Promise<RealtimeData> {
+		const url = deviceId
+			? `/api/v1/dashboard/realtime?device_id=${deviceId}`
+			: '/api/v1/dashboard/realtime';
+		return apiClient.get<RealtimeData>(url);
+	}
 }
 
 export const dashboardService = new DashboardService();
+
+
 
 

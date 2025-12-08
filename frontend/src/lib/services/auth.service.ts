@@ -26,8 +26,9 @@ export interface User {
 
 export class AuthService {
 	async login(email: string, password: string): Promise<LoginResponse> {
+		// O backend aceita "email" como campo, mas pode ser username também
 		const response = await apiClient.post<LoginResponse>('/api/v1/auth/login', {
-			email,
+			email: email, // Pode ser "admin" ou email
 			password,
 		});
 
@@ -69,5 +70,7 @@ export class AuthService {
 }
 
 export const authService = new AuthService();
+
+
 
 

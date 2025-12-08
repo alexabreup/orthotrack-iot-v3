@@ -332,3 +332,8 @@ Verifique se o backend está rodando e se a URL do WebSocket está correta nas v
 - **Health Check**: http://72.60.50.248:8080/api/v1/health
 
 
+
+
+
+
+

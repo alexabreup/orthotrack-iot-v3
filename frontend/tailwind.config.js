@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+	darkMode: 'class',
 	content: ['./src/**/*.{html,js,svelte,ts}'],
 	theme: {
 		extend: {
@@ -34,6 +35,11 @@ export default {
 					DEFAULT: 'hsl(var(--destructive))',
 					foreground: 'hsl(var(--destructive-foreground))'
 				},
+				success: 'hsl(var(--success))',
+				warning: 'hsl(var(--warning))',
+				info: 'hsl(var(--info))',
+				online: 'hsl(var(--online))',
+				offline: 'hsl(var(--offline))',
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
 				ring: 'hsl(var(--ring))'
@@ -47,5 +53,7 @@ export default {
 	},
 	plugins: []
 };
+
+
 
 
