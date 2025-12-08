@@ -56,20 +56,26 @@ services:
       # Database
       DB_HOST: postgres
       DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-orthotrack}
       DB_DATABASE: ${DB_DATABASE:-orthotrack}
+      DB_USER: ${DB_USER:-postgres}
       DB_USERNAME: ${DB_USERNAME:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_SSL_MODE: disable
       
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      REDIS_DB: 0
       
       # MQTT
       MQTT_HOST: mqtt
       MQTT_PORT: 1883
+      MQTT_BROKER_URL: tcp://mqtt:1883
       MQTT_USERNAME: ${MQTT_USERNAME:-orthotrack}
       MQTT_PASSWORD: ${MQTT_PASSWORD:-mqtt123}
+      MQTT_CLIENT_ID: orthotrack-backend
       
       # JWT
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
@@ -83,6 +89,9 @@ services:
       IOT_ALERT_TEMP_HIGH: ${IOT_ALERT_TEMP_HIGH:-45.0}
       IOT_ALERT_TEMP_LOW: ${IOT_ALERT_TEMP_LOW:-5.0}
       
+      # CORS Configuration
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      
     ports:
       - "8080:8080"
     depends_on:
@@ -93,6 +102,35 @@ services:
       - orthotrack-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: orthotrack-frontend
+    restart: unless-stopped
+    environment:
+      # API Configuration
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://backend:8080}
+      VITE_WS_URL: ${VITE_WS_URL:-ws://backend:8080/ws}
+      
+      # Node environment
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - orthotrack-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
       retries: 3
