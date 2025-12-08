@@ -48,12 +48,6 @@ O **OrthoTrack IoT Platform v3** é uma plataforma completa de monitoramento de 
 - **Gráficos**: Chart.js
 - **PWA**: Service Workers
 
-#### Mobile (Edge Node)
-- **Plataforma**: Android
-- **Linguagem**: Kotlin/Java
-- **BLE**: Android Bluetooth LE API
-- **Storage**: Room (SQLite)
-
 #### Firmware
 - **Plataforma**: ESP32
 - **Linguagem**: C++ (Arduino/ESP-IDF)
@@ -94,14 +88,14 @@ O **OrthoTrack IoT Platform v3** é uma plataforma completa de monitoramento de 
 ┌───────────────────────────────────▼───────────────────────────────────┐
 │                         EDGE LAYER                                     │
 │                                                                         │
-│  ┌──────────────┐         ┌──────────────┐                            │
-│  │ Android Edge │◄────────►│  ESP32 Device│                            │
-│  │     Node     │   BLE   │   (Brace)    │                            │
-│  │  (Gateway)   │         │  + Sensors   │                            │
-│  │              │         │  + TinyML    │                            │
-│  └──────┬───────┘         └──────────────┘                            │
+│  ┌──────────────┐                                                     │
+│  │  ESP32 Device│                                                     │
+│  │   (Brace)    │                                                     │
+│  │  + Sensors   │                                                     │
+│  │  + TinyML    │                                                     │
+│  └──────┬───────┘                                                     │
 │         │                                                              │
-│         │ HTTPS Sync                                                    │
+│         │ MQTT / HTTPS                                                 │
 │         │                                                              │
 └─────────┴──────────────────────────────────────────────────────────────┘
 ```
@@ -387,16 +381,11 @@ O sistema possui um pacote robusto de validadores (`pkg/validators/`):
 1. ESP32 Device
    └─> Coleta dados dos sensores (acelerômetro, giroscópio, temperatura, etc.)
    └─> Processa localmente (TinyML para detecção de uso)
-   └─> Envia via BLE para Android Edge Node
+   └─> Envia telemetria via MQTT (tópico: orthotrack/{device_id}/telemetry)
+   └─> Ou envia via HTTPS (POST /api/v1/devices/telemetry) como fallback
 
-2. Android Edge Node
-   └─> Recebe dados via BLE
-   └─> Armazena localmente (Room/SQLite) para offline-first
-   └─> Sincroniza com Backend via HTTPS (POST /api/v1/devices/telemetry)
-   └─> Retry automático em caso de falha
-
-3. Backend API
-   └─> Recebe telemetria no IoTHandler.ReceiveTelemetry()
+2. Backend API
+   └─> Recebe telemetria via MQTT ou HTTP no IoTHandler.ReceiveTelemetry()
    └─> Valida autenticação do dispositivo
    └─> Chama IoTService.ProcessTelemetry()
    └─> Busca dispositivo no banco (por device_id)
@@ -407,7 +396,7 @@ O sistema possui um pacote robusto de validadores (`pkg/validators/`):
    └─> Cache no Redis (últimos dados)
    └─> Publica via Redis pub/sub para WebSocket
 
-4. Frontend Dashboard
+3. Frontend Dashboard
    └─> Conecta via WebSocket ou polling
    └─> Recebe dados em tempo real
    └─> Atualiza visualizações
@@ -426,17 +415,13 @@ O sistema possui um pacote robusto de validadores (`pkg/validators/`):
    └─> Chama IoTService.SendCommand()
    └─> Publica comando via MQTT (tópico: orthotrack/{device_id}/commands)
 
-3. Android Edge Node (ou ESP32 direto)
+3. ESP32 Device
    └─> Recebe comando via MQTT
-   └─> Encaminha via BLE para ESP32 (se necessário)
-
-4. ESP32 Device
-   └─> Recebe comando
    └─> Executa ação (ex: atualiza configuração)
-   └─> Envia resposta via BLE → Android → Backend
-   └─> POST /api/v1/devices/commands/response
+   └─> Envia resposta via MQTT (tópico: orthotrack/{device_id}/commands/response)
+   └─> Ou via HTTPS (POST /api/v1/devices/commands/response)
 
-5. Backend API
+4. Backend API
    └─> Processa resposta
    └─> Atualiza BraceCommand (status: completed/failed)
    └─> Atualiza configuração do dispositivo (se aplicável)
@@ -1071,6 +1056,8 @@ go test ./... -cover
 **Versão do Documento**: 1.0  
 **Última Atualização**: Janeiro 2024  
 **Autor**: Equipe OrthoTrack IoT Platform v3
+
+
 
 
 

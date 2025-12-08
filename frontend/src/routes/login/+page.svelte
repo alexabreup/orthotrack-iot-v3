@@ -69,7 +69,7 @@
 					id="email"
 					type="text"
 					bind:value={email}
-					placeholder="admin"
+					placeholder="Digite seu email"
 					required
 				/>
 			</div>
@@ -80,7 +80,7 @@
 					id="password"
 					type="password"
 					bind:value={password}
-					placeholder="admin123"
+					placeholder="Digite sua senha"
 					required
 				/>
 			</div>

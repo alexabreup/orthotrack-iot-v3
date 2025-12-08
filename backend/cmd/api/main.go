@@ -80,15 +80,20 @@ func main() {
 	// Origens permitidas (ajuste conforme necessário)
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	if allowedOrigins == "" {
-		// Default para desenvolvimento local
+		// Default para produção - usar IP do VPS
 		corsConfig.AllowOrigins = []string{
-			"http://localhost:3000",
-			"http://localhost:5173",
+			"http://72.60.50.248:3000",
+			"http://72.60.50.248:8080",
 			"https://dashboard.orthotrack.aacd.org.br",
 			"https://admin.orthotrack.aacd.org.br",
 		}
 	} else {
-		corsConfig.AllowOrigins = strings.Split(allowedOrigins, ",")
+		// Remover espaços e dividir por vírgula
+		origins := strings.Split(allowedOrigins, ",")
+		for i, origin := range origins {
+			origins[i] = strings.TrimSpace(origin)
+		}
+		corsConfig.AllowOrigins = origins
 	}
 	corsConfig.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	corsConfig.AllowHeaders = []string{
@@ -174,9 +179,9 @@ func main() {
 	// Rotas WebSocket para tempo real
 	router.GET("/ws", iotHandler.HandleWebSocket)
 
-	// Iniciar servidor HTTP
+	// Iniciar servidor HTTP - escutar em todas as interfaces (0.0.0.0)
 	server := &http.Server{
-		Addr:           ":" + cfg.Port,
+		Addr:           "0.0.0.0:" + cfg.Port,
 		Handler:        router,
 		ReadTimeout:    15 * time.Second,
 		WriteTimeout:   15 * time.Second,

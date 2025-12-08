@@ -19,7 +19,7 @@ const docTemplate = `{
         },
         "version": "3.0.0"
     },
-    "host": "localhost:8080",
+    "host": "72.60.50.248:8080",
     "basePath": "/api/v1",
     "schemes": ["http", "https"],
     "securityDefinitions": {
@@ -35,7 +35,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "3.0.0",
-	Host:             "localhost:8080",
+	Host:             "72.60.50.248:8080",
 	BasePath:         "/api/v1",
 	Schemes:          []string{"http", "https"},
 	Title:            "OrthoTrack IoT API",
