@@ -84,7 +84,7 @@ func Load() *Config {
 	return &Config{
 		Port: getEnv("PORT", "8080"),
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
+			Host:     getEnv("DB_HOST", "postgres"),
 			Port:     getEnv("DB_PORT", "5432"),
 			Name:     getEnvRequired("DB_NAME"),
 			User:     getEnvRequired("DB_USER"),
@@ -92,7 +92,7 @@ func Load() *Config {
 			SSLMode:  getEnv("DB_SSL_MODE", "require"), // Default mais seguro
 		},
 		Redis: RedisConfig{
-			Host:     getEnv("REDIS_HOST", "localhost"),
+			Host:     getEnv("REDIS_HOST", "redis"),
 			Port:     getEnv("REDIS_PORT", "6379"),
 			Password: getEnv("REDIS_PASSWORD", ""),
 			DB:       redisDB,

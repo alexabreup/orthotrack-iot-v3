@@ -1,0 +1,10 @@
+# OrthoTrack ESP32 Firmware Tools - Python Dependencies
+
+# ESP32 Tools
+esptool>=4.5.1
+
+# Delta OTA Patch Creation
+detools>=0.54.0
+
+# Utilities
+pyserial>=3.5

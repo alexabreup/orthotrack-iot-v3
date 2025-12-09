@@ -18,7 +18,7 @@
 					<img
 						src="/logos/aacd-logo.png"
 						alt="AACD Logo"
-						class="h-12 w-auto object-contain"
+						class="h-22 w-auto object-contain"
 					/>
 				</a>
 				<a

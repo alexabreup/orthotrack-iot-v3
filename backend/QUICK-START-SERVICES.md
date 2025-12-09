@@ -64,3 +64,7 @@ ssh root@72.60.50.248 "cd /root/orthotrack-iot-v3/backend && ./stop-services.sh"
 
 
 
+
+
+
+

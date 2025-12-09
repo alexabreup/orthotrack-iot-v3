@@ -118,3 +118,7 @@ Todas as referências encontradas devem ser:
 - ✅ Comentários ou documentação (OK)
 - ✅ Healthchecks dentro de containers (OK)
 
+
+
+
+

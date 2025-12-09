@@ -69,7 +69,8 @@
 					id="email"
 					type="text"
 					bind:value={email}
-					placeholder="Digite seu email"
+					placeholder="Digite seu usuário"
+					autocomplete="username"
 					required
 				/>
 			</div>
@@ -81,6 +82,7 @@
 					type="password"
 					bind:value={password}
 					placeholder="Digite sua senha"
+					autocomplete="current-password"
 					required
 				/>
 			</div>

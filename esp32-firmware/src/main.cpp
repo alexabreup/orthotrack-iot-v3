@@ -7,6 +7,7 @@
 #include <Adafruit_BMP280.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
+#include "ota_update.h"
 
 // Configuração WiFi e API (definidas em platformio.ini)
 #ifndef WIFI_SSID
@@ -37,29 +38,48 @@ Adafruit_BMP280 bmp;
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 
-// Configurações
-const unsigned long TELEMETRY_INTERVAL = 5000; // 5 segundos
-const unsigned long HEARTBEAT_INTERVAL = 30000; // 30 segundos
-const float USAGE_THRESHOLD = 1.0; // m/s² para detectar uso
-const int BATTERY_PIN = 35; // ADC pin para leitura de bateria
-
-// Estados
-unsigned long lastTelemetry = 0;
-unsigned long lastHeartbeat = 0;
-bool isWearing = false;
-bool wifiConnected = false;
-
 // Estruturas de dados
 struct SensorData {
     float accelX, accelY, accelZ;
     float gyroX, gyroY, gyroZ;
     float temperature;
     float pressure;
+    bool touchDetected;
     bool movementDetected;
     bool isWearing;
     int batteryLevel;
     unsigned long timestamp;
 };
+
+// Declarações de funções
+bool initSensors();
+void connectWiFi();
+SensorData readSensors();
+bool readTouchSensor();
+void detectUsage(SensorData& data);
+void sendTelemetry(const SensorData& data);
+void sendHeartbeat();
+void sendUsageStateChange(bool wearing);
+int readBatteryLevel();
+void checkBatteryLevel();
+
+// Configurações
+const unsigned long TELEMETRY_INTERVAL = 5000; // 5 segundos
+const unsigned long HEARTBEAT_INTERVAL = 30000; // 30 segundos
+const float USAGE_THRESHOLD = 1.0; // m/s² para detectar uso
+const int BATTERY_PIN = 35; // ADC pin para leitura de bateria
+const int TOUCH_SENSOR_PIN = 4; // GPIO4 para TTP223 (sensor de toque capacitivo)
+
+// Estados
+unsigned long lastTelemetry = 0;
+unsigned long lastHeartbeat = 0;
+bool isWearing = false;
+bool wifiConnected = false;
+bool lastTouchState = false;
+unsigned long lastTouchChange = 0;
+
+// OTA Updater
+OTAUpdater* otaUpdater = nullptr;
 
 void setup() {
     Serial.begin(115200);
@@ -67,6 +87,10 @@ void setup() {
     
     // Inicializar I2C
     Wire.begin();
+    
+    // Inicializar GPIO do sensor de toque
+    pinMode(TOUCH_SENSOR_PIN, INPUT_PULLDOWN);
+    Serial.println("Inicializando TTP223... ✅ OK");
     
     // Inicializar sensores
     if (!initSensors()) {
@@ -80,6 +104,10 @@ void setup() {
     // Sincronizar tempo
     timeClient.begin();
     timeClient.setTimeOffset(-3 * 3600); // UTC-3 (Brasil)
+    
+    // Inicializar OTA Updater
+    otaUpdater = new OTAUpdater(API_ENDPOINT, DEVICE_ID, API_KEY);
+    otaUpdater->begin();
     
     Serial.println("✅ Sistema inicializado com sucesso!");
     
@@ -97,6 +125,11 @@ void loop() {
     
     // Atualizar tempo
     timeClient.update();
+    
+    // Verificar atualizações OTA
+    if (otaUpdater) {
+        otaUpdater->loop();
+    }
     
     // Ler sensores e processar dados
     SensorData data = readSensors();
@@ -190,6 +223,9 @@ SensorData readSensors() {
     data.temperature = bmp.readTemperature();
     data.pressure = bmp.readPressure() / 100.0F; // hPa
     
+    // Ler sensor de toque TTP223
+    data.touchDetected = readTouchSensor();
+    
     // Detectar movimento
     float accelMagnitude = sqrt(data.accelX * data.accelX + 
                                data.accelY * data.accelY + 
@@ -205,33 +241,68 @@ SensorData readSensors() {
     return data;
 }
 
+bool readTouchSensor() {
+    bool currentState = digitalRead(TOUCH_SENSOR_PIN);
+    unsigned long now = millis();
+    
+    // Debouncing: só considera mudança após 500ms
+    if (currentState != lastTouchState) {
+        if (now - lastTouchChange > 500) {
+            lastTouchState = currentState;
+            lastTouchChange = now;
+            
+            if (currentState) {
+                Serial.println("👆 Touch detected");
+            } else {
+                Serial.println("👆 Touch released");
+            }
+        }
+    }
+    
+    return lastTouchState;
+}
+
 void detectUsage(SensorData& data) {
-    // Algoritmo simples de detecção de uso
-    // Em produção, usar ML mais sofisticado
+    // Algoritmo de detecção de uso com sensor de toque TTP223
+    // Indicador primário: toque detectado (contato com a pele)
+    // Indicadores secundários: temperatura corporal e movimento
     
     bool currentlyWearing = false;
     
     // Critérios para detectar uso:
-    // 1. Temperatura corporal (30-40°C)
-    // 2. Movimento humano normal
-    // 3. Pressão consistente
+    // 1. Sensor de toque detecta contato (TTP223 HIGH)
+    // 2. Temperatura corporal (30-40°C)
+    // 3. Movimento humano normal (opcional)
     
-    if (data.temperature >= 30.0 && data.temperature <= 40.0) {
-        if (data.movementDetected) {
-            currentlyWearing = true;
-        }
+    if (data.touchDetected && data.temperature >= 30.0 && data.temperature <= 40.0) {
+        currentlyWearing = true;
     }
     
     // Filtro para evitar falsos positivos/negativos
     static int wearingCount = 0;
+    static int notWearingCount = 0;
+    
     if (currentlyWearing) {
         wearingCount++;
+        notWearingCount = 0;
     } else {
         wearingCount = max(0, wearingCount - 1);
+        if (!data.touchDetected) {
+            notWearingCount++;
+        } else {
+            notWearingCount = 0;
+        }
     }
     
-    // Require 5 consecutive readings
-    data.isWearing = (wearingCount >= 5);
+    // Require 5 consecutive readings to confirm wearing
+    if (wearingCount >= 5) {
+        data.isWearing = true;
+    }
+    
+    // Require 10 consecutive no-touch readings to confirm not wearing
+    if (notWearingCount >= 10) {
+        data.isWearing = false;
+    }
     
     // Detectar mudança de estado
     if (data.isWearing != isWearing) {
@@ -288,9 +359,15 @@ void sendTelemetry(const SensorData& data) {
     pressure["value"] = data.pressure;
     pressure["unit"] = "hPa";
     
+    JsonObject touch = sensors.createNestedObject("touch_sensor");
+    touch["type"] = "touch";
+    touch["value"] = data.touchDetected;
+    touch["unit"] = "boolean";
+    
     // Análise de uso
     doc["is_wearing"] = data.isWearing;
     doc["movement_detected"] = data.movementDetected;
+    doc["touch_detected"] = data.touchDetected;
     
     String payload;
     serializeJson(doc, payload);
