@@ -12,6 +12,11 @@ export default defineConfig({
 	},
 	ssr: {
 		noExternal: ['@tanstack/svelte-table']
+	},
+	test: {
+		environment: 'node',
+		globals: true,
+		setupFiles: []
 	}
 });
 
