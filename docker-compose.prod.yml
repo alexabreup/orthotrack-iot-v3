@@ -35,7 +35,7 @@ services:
     networks:
       - orthotrack-network
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "-a", "redis_secure_2024", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -96,7 +96,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - PORT=8080
       - GIN_MODE=release
-      - ALLOWED_ORIGINS=http://72.60.50.248:3000,http://72.60.50.248:8080,http://localhost:3000
+      - ALLOWED_ORIGINS=https://orthotrack.alexptech.com,https://www.orthotrack.alexptech.com,https://api.orthotrack.alexptech.com,http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy
