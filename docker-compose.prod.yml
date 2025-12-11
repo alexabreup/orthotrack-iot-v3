@@ -79,7 +79,7 @@ services:
     container_name: orthotrack-backend
     restart: unless-stopped
     env_file:
-      - ./backend/.env.production
+      - ./.env.production
     depends_on:
       postgres:
         condition: service_healthy

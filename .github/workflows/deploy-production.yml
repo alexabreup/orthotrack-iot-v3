@@ -248,26 +248,38 @@ jobs:
         run: |
           ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Create deployment directory
+      - name: Create deployment directory structure
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "mkdir -p ${{ env.DEPLOY_PATH }}"
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "mkdir -p ${{ env.DEPLOY_PATH }}/{backend,frontend,nginx,scripts,monitoring}"
 
       - name: Copy deployment files
         run: |
-          # Copy docker-compose and configuration files
-          scp docker-compose.prod.yml ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
-          scp nginx.conf ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
-          scp mosquitto.conf ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          echo "Copying docker-compose file..."
+          scp docker-compose.prod.yml ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/docker-compose.yml
           
-          # Copy scripts
-          scp -r scripts/ ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          echo "Copying nginx configuration..."
+          if [ -f nginx.conf ]; then
+            scp nginx.conf ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/nginx/
+          fi
           
-          # Copy monitoring configuration
-          scp -r monitoring/ ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          echo "Copying mosquitto configuration..."
+          if [ -f mosquitto.conf ]; then
+            scp mosquitto.conf ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          fi
+          
+          echo "Copying scripts..."
+          if [ -d scripts ]; then
+            scp -r scripts/* ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/scripts/
+          fi
+          
+          echo "Copying monitoring configuration..."
+          if [ -d monitoring ]; then
+            scp -r monitoring/* ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/monitoring/
+          fi
 
       - name: Create environment file
         run: |
-          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cat > ${{ env.DEPLOY_PATH }}/backend/.env.production << 'EOF'
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cat > ${{ env.DEPLOY_PATH }}/.env.production << 'EOF'
           # Database
           DB_HOST=orthotrack-postgres
           DB_PORT=5432
@@ -314,8 +326,8 @@ jobs:
         run: |
           ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "
             cd ${{ env.DEPLOY_PATH }}
-            sed -i 's|image: alexabreup/orthotrack-backend:latest|image: alexabreup/orthotrack-backend:${{ github.sha }}|g' ${{ env.DOCKER_COMPOSE_FILE }}
-            sed -i 's|image: alexabreup/orthotrack-frontend:latest|image: alexabreup/orthotrack-frontend:${{ github.sha }}|g' ${{ env.DOCKER_COMPOSE_FILE }}
+            sed -i 's|image: alexabreup/orthotrack-backend:latest|image: alexabreup/orthotrack-backend:${{ github.sha }}|g' docker-compose.yml
+            sed -i 's|image: alexabreup/orthotrack-frontend:latest|image: alexabreup/orthotrack-frontend:${{ github.sha }}|g' docker-compose.yml
           "
 
       - name: Deploy application
@@ -336,7 +348,7 @@ jobs:
             
             # Deploy with zero downtime
             echo '🚀 Deploying application...'
-            docker-compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --remove-orphans
+            docker-compose -f docker-compose.yml up -d --remove-orphans
             
             # Wait for services to be ready
             echo '⏳ Waiting for services to be ready...'
