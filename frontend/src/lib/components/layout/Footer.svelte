@@ -18,7 +18,8 @@
 					<img
 						src="/logos/aacd-logo.png"
 						alt="AACD Logo"
-						class="h-22 w-auto object-contain"
+						class="w-auto object-contain"
+						style="height: 5.75rem;"
 					/>
 				</a>
 				<a

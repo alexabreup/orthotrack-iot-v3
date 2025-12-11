@@ -1,47 +1,49 @@
-# Build stage
-FROM golang:1.23-alpine AS builder
+# Backend Dockerfile for Production
+FROM golang:1.21-alpine AS builder
 
-# Instalar dependências de build
+# Install dependencies
 RUN apk add --no-cache git ca-certificates tzdata
 
-# Definir diretório de trabalho
+# Set working directory
 WORKDIR /app
 
-# Copiar go.mod e go.sum
+# Copy go mod files
 COPY go.mod go.sum ./
 
-# Baixar dependências
+# Download dependencies
 RUN go mod download
 
-# Copiar código fonte
+# Copy source code
 COPY . .
 
-# Compilar aplicação
+# Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -a -installsuffix cgo -o main ./cmd/api
 
 # Production stage
 FROM alpine:latest
 
-# Instalar dependências necessárias
-RUN apk --no-cache add ca-certificates tzdata
+# Install ca-certificates and timezone data
+RUN apk --no-cache add ca-certificates tzdata wget
 
-# Criar usuário não-root
+# Create app directory and user
 RUN adduser -D -s /bin/sh orthotrack
-
-# Definir diretório de trabalho
 WORKDIR /home/orthotrack
 
-# Copiar binário compilado
+# Copy binary from builder
 COPY --from=builder /app/main .
 
-# Definir propriedade dos arquivos
+# Change ownership
 RUN chown orthotrack:orthotrack main
 
-# Mudar para usuário não-root
+# Switch to non-root user
 USER orthotrack
 
-# Expor porta
+# Expose port
 EXPOSE 8080
 
-# Comando de execução
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Run the application
 CMD ["./main"]

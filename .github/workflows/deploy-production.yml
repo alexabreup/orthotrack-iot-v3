@@ -1,0 +1,320 @@
+name: 🚀 Deploy to Production VPS
+
+on:
+  push:
+    branches: [ main, production ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+env:
+  VPS_HOST: 72.60.50.248
+  VPS_USER: root
+  DEPLOY_PATH: /opt/orthotrack
+  DOCKER_COMPOSE_FILE: docker-compose.prod.yml
+
+jobs:
+  test:
+    name: 🧪 Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run backend tests
+        run: |
+          cd backend
+          go mod download
+          go test -v ./...
+
+  build:
+    name: 🏗️ Build Images
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ secrets.DOCKER_USERNAME }}/orthotrack-backend
+            ${{ secrets.DOCKER_USERNAME }}/orthotrack-frontend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: alexabreup/orthotrack-backend:${{ github.sha }},alexabreup/orthotrack-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: alexabreup/orthotrack-frontend:${{ github.sha }},alexabreup/orthotrack-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+            VITE_API_URL=https://api.orthotrack.alexptech.com
+            VITE_WS_URL=wss://api.orthotrack.alexptech.com/ws
+
+  deploy:
+    name: 🚀 Deploy to VPS
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production' || startsWith(github.ref, 'refs/tags/v')
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+
+      - name: Add VPS to known hosts
+        run: |
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create deployment directory
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "mkdir -p ${{ env.DEPLOY_PATH }}"
+
+      - name: Copy deployment files
+        run: |
+          # Copy docker-compose and configuration files
+          scp docker-compose.prod.yml ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          scp nginx.conf ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          scp mosquitto.conf ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          
+          # Copy scripts
+          scp -r scripts/ ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+          
+          # Copy monitoring configuration
+          scp -r monitoring/ ${{ env.VPS_USER }}@${{ env.VPS_HOST }}:${{ env.DEPLOY_PATH }}/
+
+      - name: Create environment file
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "cat > ${{ env.DEPLOY_PATH }}/backend/.env.production << 'EOF'
+          # Database
+          DB_HOST=orthotrack-postgres
+          DB_PORT=5432
+          DB_NAME=orthotrack_prod
+          DB_USER=orthotrack
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          DB_SSL_MODE=require
+          
+          # Redis
+          REDIS_HOST=orthotrack-redis
+          REDIS_PORT=6379
+          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+          REDIS_DB=0
+          REDIS_POOL_SIZE=20
+          REDIS_MIN_IDLE_CONNS=10
+          REDIS_MAX_RETRIES=5
+          
+          # MQTT
+          MQTT_HOST=orthotrack-mqtt
+          MQTT_PORT=1883
+          MQTT_BROKER_URL=tcp://orthotrack-mqtt:1883
+          MQTT_USERNAME=orthotrack
+          MQTT_PASSWORD=${{ secrets.MQTT_PASSWORD }}
+          MQTT_CLIENT_ID=orthotrack-backend-prod
+          
+          # JWT
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_EXPIRE_HOURS=24
+          
+          # Server
+          PORT=8080
+          GIN_MODE=release
+          
+          # CORS
+          ALLOWED_ORIGINS=https://orthotrack.alexptech.com,https://www.orthotrack.alexptech.com,https://api.orthotrack.alexptech.com,http://72.60.50.248:3000,http://72.60.50.248:8080
+          
+          # Alertas
+          IOT_ALERT_BATTERY_LOW=15
+          IOT_ALERT_TEMP_HIGH=45.0
+          IOT_ALERT_TEMP_LOW=5.0
+          EOF"
+
+      - name: Update docker-compose with new image tags
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "
+            cd ${{ env.DEPLOY_PATH }}
+            sed -i 's|image: alexabreup/orthotrack-backend:latest|image: alexabreup/orthotrack-backend:${{ github.sha }}|g' ${{ env.DOCKER_COMPOSE_FILE }}
+            sed -i 's|image: alexabreup/orthotrack-frontend:latest|image: alexabreup/orthotrack-frontend:${{ github.sha }}|g' ${{ env.DOCKER_COMPOSE_FILE }}
+          "
+
+      - name: Deploy application
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "
+            cd ${{ env.DEPLOY_PATH }}
+            
+            # Create backup before deployment
+            if [ -f '${{ env.DOCKER_COMPOSE_FILE }}' ]; then
+              echo '📦 Creating backup before deployment...'
+              ./scripts/backup.sh || echo 'Backup script not found, continuing...'
+            fi
+            
+            # Pull latest images
+            echo '📥 Pulling latest Docker images...'
+            docker pull alexabreup/orthotrack-backend:${{ github.sha }}
+            docker pull alexabreup/orthotrack-frontend:${{ github.sha }}
+            
+            # Deploy with zero downtime
+            echo '🚀 Deploying application...'
+            docker-compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --remove-orphans
+            
+            # Wait for services to be ready
+            echo '⏳ Waiting for services to be ready...'
+            sleep 30
+            
+            # Health check
+            echo '🏥 Running health checks...'
+            ./scripts/health-check.sh || echo 'Health check script not found'
+            
+            # Clean up old images
+            echo '🧹 Cleaning up old Docker images...'
+            docker image prune -f
+            
+            echo '✅ Deployment completed successfully!'
+          "
+
+      - name: Verify deployment
+        run: |
+          # Wait a bit more for services to fully start
+          sleep 60
+          
+          # Test endpoints
+          echo "Testing frontend..."
+          curl -f -s -o /dev/null https://orthotrack.alexptech.com/health || echo "Frontend health check failed"
+          
+          echo "Testing API..."
+          curl -f -s -o /dev/null https://api.orthotrack.alexptech.com/health || echo "API health check failed"
+          
+          echo "Deployment verification completed"
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            STATUS="✅ SUCCESS"
+            COLOR="good"
+          else
+            STATUS="❌ FAILED"
+            COLOR="danger"
+          fi
+          
+          # Send notification (webhook example)
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{
+              \"text\": \"🚀 OrthoTrack Deployment $STATUS\",
+              \"attachments\": [{
+                \"color\": \"$COLOR\",
+                \"fields\": [
+                  {\"title\": \"Environment\", \"value\": \"Production\", \"short\": true},
+                  {\"title\": \"Commit\", \"value\": \"${{ github.sha }}\", \"short\": true},
+                  {\"title\": \"Branch\", \"value\": \"${{ github.ref_name }}\", \"short\": true},
+                  {\"title\": \"Author\", \"value\": \"${{ github.actor }}\", \"short\": true}
+                ]
+              }]
+            }" \
+            ${{ secrets.SLACK_WEBHOOK_URL }} || echo "Notification webhook not configured"
+
+  rollback:
+    name: 🔄 Rollback (Manual)
+    runs-on: ubuntu-latest
+    if: failure() && github.event_name == 'workflow_dispatch'
+    environment: production
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+
+      - name: Add VPS to known hosts
+        run: |
+          ssh-keyscan -H ${{ env.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rollback to previous version
+        run: |
+          ssh ${{ env.VPS_USER }}@${{ env.VPS_HOST }} "
+            cd ${{ env.DEPLOY_PATH }}
+            
+            echo '🔄 Starting rollback process...'
+            
+            # Get the previous successful deployment
+            PREVIOUS_TAG=\$(docker images --format 'table {{.Repository}}:{{.Tag}}' | grep orthotrack-backend | grep -v latest | head -2 | tail -1 | cut -d':' -f2)
+            
+            if [ -n \"\$PREVIOUS_TAG\" ]; then
+              echo \"Rolling back to tag: \$PREVIOUS_TAG\"
+              
+              # Update docker-compose with previous tag
+              sed -i \"s|${{ secrets.DOCKER_USERNAME }}/orthotrack-backend:.*|${{ secrets.DOCKER_USERNAME }}/orthotrack-backend:\$PREVIOUS_TAG|g\" ${{ env.DOCKER_COMPOSE_FILE }}
+              sed -i \"s|${{ secrets.DOCKER_USERNAME }}/orthotrack-frontend:.*|${{ secrets.DOCKER_USERNAME }}/orthotrack-frontend:\$PREVIOUS_TAG|g\" ${{ env.DOCKER_COMPOSE_FILE }}
+              
+              # Deploy previous version
+              docker-compose -f ${{ env.DOCKER_COMPOSE_FILE }} up -d --remove-orphans
+              
+              echo '✅ Rollback completed successfully!'
+            else
+              echo '❌ No previous version found for rollback'
+              exit 1
+            fi
+          "

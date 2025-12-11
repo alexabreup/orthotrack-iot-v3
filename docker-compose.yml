@@ -92,7 +92,7 @@ services:
       IOT_ALERT_TEMP_LOW: ${IOT_ALERT_TEMP_LOW:-5.0}
       
       # CORS - Default para VPS, mas pode ser sobrescrito via .env
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://72.60.50.248:3000,http://72.60.50.248:8080}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://localhost:8080,http://127.0.0.1:5173,http://127.0.0.1:3000,http://127.0.0.1:8080,http://72.60.50.248:3000,http://72.60.50.248:8080}
       
     ports:
       - "8080:8080"

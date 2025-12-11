@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"orthotrack-iot-v3/internal/models"
+	"orthotrack-iot-v3/internal/services"
 	"orthotrack-iot-v3/pkg/validators"
 
 	"github.com/gin-gonic/gin"
@@ -14,10 +16,15 @@ import (
 
 type PatientHandler struct {
 	db *gorm.DB
+	dashboardStatsService *services.DashboardStatsService
 }
 
 func NewPatientHandler(db *gorm.DB) *PatientHandler {
 	return &PatientHandler{db: db}
+}
+
+func (h *PatientHandler) SetDashboardStatsService(dashboardStatsService *services.DashboardStatsService) {
+	h.dashboardStatsService = dashboardStatsService
 }
 
 type CreatePatientRequest struct {
@@ -247,6 +254,12 @@ func (h *PatientHandler) CreatePatient(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Trigger dashboard stats recalculation on patient creation
+	if h.dashboardStatsService != nil {
+		ctx := context.Background()
+		h.dashboardStatsService.RecalculateStatsOnPatientChange(ctx, &patient.InstitutionID)
+	}
 	
 	c.JSON(http.StatusCreated, patient)
 }
@@ -305,6 +318,12 @@ func (h *PatientHandler) UpdatePatient(c *gin.Context) {
 	if err := h.db.Save(&patient).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Trigger dashboard stats recalculation on patient update
+	if h.dashboardStatsService != nil {
+		ctx := context.Background()
+		h.dashboardStatsService.RecalculateStatsOnPatientChange(ctx, &patient.InstitutionID)
 	}
 	
 	c.JSON(http.StatusOK, patient)

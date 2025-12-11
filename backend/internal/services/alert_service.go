@@ -16,6 +16,7 @@ import (
 type AlertService struct {
 	db    *gorm.DB
 	redis *redis.Client
+	dashboardStatsService *DashboardStatsService
 }
 
 func NewAlertService(db *gorm.DB, redis *redis.Client) *AlertService {
@@ -23,6 +24,10 @@ func NewAlertService(db *gorm.DB, redis *redis.Client) *AlertService {
 		db:    db,
 		redis: redis,
 	}
+}
+
+func (s *AlertService) SetDashboardStatsService(dashboardStatsService *DashboardStatsService) {
+	s.dashboardStatsService = dashboardStatsService
 }
 
 func (s *AlertService) GetDB() *gorm.DB {
@@ -69,6 +74,19 @@ func (s *AlertService) CreateAlert(ctx context.Context, alert *models.Alert) err
 
 	// Processar notificações
 	go s.processAlertNotifications(ctx, alert)
+
+	// Trigger dashboard stats recalculation on alert creation
+	if s.dashboardStatsService != nil {
+		// Get institution ID from patient if available
+		var institutionID *uint
+		if alert.PatientID != nil {
+			var patient models.Patient
+			if err := s.db.Select("institution_id").First(&patient, *alert.PatientID).Error; err == nil {
+				institutionID = &patient.InstitutionID
+			}
+		}
+		s.dashboardStatsService.RecalculateStatsOnAlertChange(ctx, institutionID)
+	}
 
 	return nil
 }
@@ -147,6 +165,19 @@ func (s *AlertService) ResolveAlert(ctx context.Context, alertID uint, resolvedB
 
 	// Publicar resolução em tempo real
 	s.publishAlertResolved(ctx, &alert)
+
+	// Trigger dashboard stats recalculation on alert resolution
+	if s.dashboardStatsService != nil {
+		// Get institution ID from patient if available
+		var institutionID *uint
+		if alert.PatientID != nil {
+			var patient models.Patient
+			if err := s.db.Select("institution_id").First(&patient, *alert.PatientID).Error; err == nil {
+				institutionID = &patient.InstitutionID
+			}
+		}
+		s.dashboardStatsService.RecalculateStatsOnAlertChange(ctx, institutionID)
+	}
 
 	return nil
 }

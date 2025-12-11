@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import DeviceCard from './DeviceCard.svelte';
 	import { LoadingSpinner, ErrorMessage, EmptyState, Pagination, SearchBar } from '$lib/components/common';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { devicesService } from '$lib/services/devices.service';
+	import { getWebSocketClient } from '$lib/services/websocket.service';
+	import { deviceStatuses, initializeDeviceStatusesStore } from '$lib/stores/device-statuses.store';
 	import type { Brace, DevicesListParams } from '$lib/types/device';
 
 	export let filters: DevicesListParams = {};
@@ -17,7 +19,31 @@
 
 	onMount(() => {
 		loadDevices();
+		initializeRealTimeUpdates();
 	});
+
+	onDestroy(() => {
+		cleanupRealTimeUpdates();
+	});
+
+	function initializeRealTimeUpdates() {
+		// Initialize device statuses store
+		initializeDeviceStatusesStore();
+		
+		// Subscribe to device status channels for all devices
+		const wsClient = getWebSocketClient();
+		devices.forEach(device => {
+			wsClient.subscribe(`device:${device.device_id}`);
+		});
+	}
+
+	function cleanupRealTimeUpdates() {
+		// Unsubscribe from device status channels
+		const wsClient = getWebSocketClient();
+		devices.forEach(device => {
+			wsClient.unsubscribe(`device:${device.device_id}`);
+		});
+	}
 
 	async function loadDevices() {
 		loading = true;
@@ -29,8 +55,19 @@
 				search: searchQuery || undefined,
 			};
 			const response = await devicesService.list(params);
+			
+			// Cleanup previous subscriptions
+			if (devices.length > 0) {
+				cleanupRealTimeUpdates();
+			}
+			
 			devices = response.data;
 			totalPages = response.total_pages;
+			
+			// Setup new subscriptions for loaded devices
+			if (devices.length > 0) {
+				initializeRealTimeUpdates();
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Erro ao carregar dispositivos';
 		} finally {

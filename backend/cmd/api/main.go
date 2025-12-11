@@ -50,15 +50,34 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Seed initial data
+	if err := database.SeedData(db); err != nil {
+		log.Printf("Warning: Failed to seed data: %v", err)
+	}
+
 	// Inicializar serviços
 	iotService := services.NewIoTService(db, redisClient, cfg)
 	alertService := services.NewAlertService(db, redisClient)
 	mqttService := services.NewMQTTService(cfg)
+	
+	// Create Redis manager for WebSocket server
+	redisManager := services.NewRedisManager(cfg.Redis.Host, cfg.Redis.Port, cfg.Redis.Password, cfg.Redis.DB, cfg.Redis.PoolSize, cfg.Redis.MinIdleConns, cfg.Redis.MaxRetries)
+	ctx := context.Background()
+	if err := redisManager.Connect(ctx); err != nil {
+		log.Fatalf("Failed to connect Redis manager: %v", err)
+	}
+	
+	// Create channel authorizer
+	channelAuthorizer := services.NewChannelAuthorizer(db)
+	wsServer := services.NewWSServer(redisManager, channelAuthorizer)
 
 	// Configurar dependências entre serviços
 	iotService.SetAlertService(alertService)
 	iotService.SetMQTTService(mqttService)
 	mqttService.SetIoTService(iotService)
+
+	// Start WebSocket server
+	go wsServer.Run()
 
 	// Conectar ao MQTT
 	if err := mqttService.Connect(); err != nil {
@@ -116,6 +135,7 @@ func main() {
 	// Inicializar handlers
 	authHandler := handlers.NewAuthHandler(db, cfg)
 	iotHandler := handlers.NewIoTHandler(iotService, alertService)
+	iotHandler.SetWSServer(wsServer)
 	adminHandler := handlers.NewAdminHandler(db, iotService, alertService)
 
 	// Swagger documentation
@@ -174,6 +194,11 @@ func main() {
 		// Dashboard
 		protected.GET("/dashboard/overview", adminHandler.GetDashboardOverview)
 		protected.GET("/dashboard/realtime", adminHandler.GetRealtimeData)
+		
+		// WebSocket Metrics
+		protected.GET("/websocket/metrics", func(c *gin.Context) {
+			wsServer.ServeMetrics(c.Writer, c.Request)
+		})
 	}
 
 	// Rotas WebSocket para tempo real
@@ -249,9 +274,12 @@ func connectDatabase(cfg *config.Config) (*gorm.DB, error) {
 
 func connectRedis(cfg *config.Config) *redis.Client {
 	client := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
+		Addr:         fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
+		Password:     cfg.Redis.Password,
+		DB:           cfg.Redis.DB,
+		PoolSize:     cfg.Redis.PoolSize,
+		MinIdleConns: cfg.Redis.MinIdleConns,
+		MaxRetries:   cfg.Redis.MaxRetries,
 	})
 
 	ctx := context.Background()

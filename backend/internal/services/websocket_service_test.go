@@ -3,10 +3,13 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"orthotrack-iot-v3/internal/models"
 	"github.com/redis/go-redis/v9"
 	"pgregory.net/rapid"
 )
@@ -17,7 +20,7 @@ import (
 func TestProperty_DeviceStatusEventPropagation(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup: Create Redis manager
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -124,7 +127,7 @@ func TestProperty_DeviceStatusEventPropagation(t *testing.T) {
 func TestProperty_UnsubscribedClientsDoNotReceiveMessages(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -188,7 +191,7 @@ func TestProperty_UnsubscribedClientsDoNotReceiveMessages(t *testing.T) {
 func TestProperty_ViewerCountTracking(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -253,11 +256,23 @@ func TestProperty_ViewerCountTracking(t *testing.T) {
 // Validates: Requirements 10.1, 10.2
 // For any event published on one server instance, the system should propagate it to clients connected to other instances via Redis Pub/Sub
 func TestProperty_RedisPubSubSynchronization(t *testing.T) {
-	// Try different Redis configurations (localhost for local dev, orthotrack-redis for Docker)
+	// Get Redis configuration from environment or use defaults
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		redisHost = "localhost"
+	}
+	redisPort := os.Getenv("REDIS_PORT")
+	if redisPort == "" {
+		redisPort = "6379"
+	}
+	redisPassword := os.Getenv("REDIS_PASSWORD")
+	
+	// Try different Redis configurations (environment first, then fallbacks)
 	redisConfigs := []struct {
 		host     string
 		password string
 	}{
+		{fmt.Sprintf("%s:%s", redisHost, redisPort), redisPassword},
 		{"localhost:6379", ""},
 		{"orthotrack-redis:6379", "redis123"},
 		{"redis:6379", "redis123"},
@@ -292,8 +307,8 @@ func TestProperty_RedisPubSubSynchronization(t *testing.T) {
 		port := hostParts[1]
 		
 		// Create two Redis managers simulating different server instances
-		redisManager1 := NewRedisManager(host, port, workingConfig.password, 0)
-		redisManager2 := NewRedisManager(host, port, workingConfig.password, 0)
+		redisManager1 := NewRedisManager(host, port, workingConfig.password, 0, 10, 5, 3)
+		redisManager2 := NewRedisManager(host, port, workingConfig.password, 0, 10, 5, 3)
 		
 		err1 := redisManager1.Connect(ctx)
 		err2 := redisManager2.Connect(ctx)
@@ -441,9 +456,21 @@ func TestProperty_RedisPubSubSynchronization(t *testing.T) {
 // Validates: Requirements 10.5
 // For any event published via Redis, the system should include metadata to prevent propagation loops
 func TestProperty_LoopPrevention(t *testing.T) {
+	// Get Redis configuration from environment or use defaults
+	redisHost := os.Getenv("REDIS_HOST")
+	if redisHost == "" {
+		redisHost = "localhost"
+	}
+	redisPort := os.Getenv("REDIS_PORT")
+	if redisPort == "" {
+		redisPort = "6379"
+	}
+	redisPassword := os.Getenv("REDIS_PASSWORD")
+	
 	// Skip if Redis is not available
 	redisOptions := &redis.Options{
-		Addr: "localhost:6379",
+		Addr:     fmt.Sprintf("%s:%s", redisHost, redisPort),
+		Password: redisPassword,
 	}
 	
 	ctx := context.Background()
@@ -455,7 +482,7 @@ func TestProperty_LoopPrevention(t *testing.T) {
 	
 	rapid.Check(t, func(t *rapid.T) {
 		// Create Redis manager and WebSocket server
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager(redisHost, redisPort, redisPassword, 0, 10, 5, 3)
 		err := redisManager.Connect(ctx)
 		if err != nil {
 			t.Skip("Failed to connect to Redis")
@@ -541,7 +568,7 @@ func TestProperty_LoopPrevention(t *testing.T) {
 func TestProperty_PageNavigationSubscription(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -622,7 +649,7 @@ func TestProperty_PageNavigationSubscription(t *testing.T) {
 func TestProperty_ViewerCountTrackingEnhanced(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -727,7 +754,7 @@ func TestProperty_ViewerCountTrackingEnhanced(t *testing.T) {
 func TestProperty_HeartbeatInterval(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -805,7 +832,7 @@ func TestProperty_HeartbeatInterval(t *testing.T) {
 func TestProperty_DeadConnectionDetection(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -887,7 +914,7 @@ func TestProperty_DeadConnectionDetection(t *testing.T) {
 func TestProperty_TelemetryEventPropagation(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup: Create Redis manager
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -1048,7 +1075,7 @@ func TestProperty_TelemetryEventPropagation(t *testing.T) {
 func TestProperty_ConnectionLogging(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0)
+		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
 		ctx := context.Background()
 		if err := redisManager.Connect(ctx); err != nil {
 			t.Skip("Redis not available, skipping test")
@@ -1081,7 +1108,6 @@ func TestProperty_ConnectionLogging(t *testing.T) {
 		}
 		
 		// Test connection establishment logging
-		startTime := time.Now()
 		wsServer.RegisterClientWithIP(client, ipAddress)
 		
 		// Property: Logger should track connection time

@@ -2,46 +2,49 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 
 	"orthotrack-iot-v3/internal/models"
 	"orthotrack-iot-v3/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
 type IoTHandler struct {
 	iotService   *services.IoTService
 	alertService *services.AlertService
+	wsServer     *services.WSServer
+	eventHandler *services.EventHandler
 	upgrader     websocket.Upgrader
-	clients      map[*websocket.Conn]bool
-	clientsMutex sync.RWMutex
-	broadcast    chan []byte
 }
 
 func NewIoTHandler(iotService *services.IoTService, alertService *services.AlertService) *IoTHandler {
-	handler := &IoTHandler{
+	return &IoTHandler{
 		iotService:   iotService,
 		alertService: alertService,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // Allow all origins in development
 			},
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
 		},
-		clients:   make(map[*websocket.Conn]bool),
-		broadcast: make(chan []byte),
 	}
-	
-	// Start WebSocket broadcast goroutine
-	go handler.handleBroadcasts()
-	
-	return handler
+}
+
+// SetWSServer sets the WebSocket server for the handler
+func (h *IoTHandler) SetWSServer(wsServer *services.WSServer) {
+	h.wsServer = wsServer
+}
+
+// SetEventHandler sets the event handler for the handler
+func (h *IoTHandler) SetEventHandler(eventHandler *services.EventHandler) {
+	h.eventHandler = eventHandler
 }
 
 func (h *IoTHandler) ReceiveTelemetry(c *gin.Context) {
@@ -63,10 +66,11 @@ func (h *IoTHandler) ReceiveTelemetry(c *gin.Context) {
 
 func (h *IoTHandler) ReceiveDeviceStatus(c *gin.Context) {
 	var status struct {
-		DeviceID      string `json:"device_id" binding:"required"`
-		Status        string `json:"status"`
-		BatteryLevel  *int   `json:"battery_level"`
-		SignalStrength *int `json:"signal_strength"`
+		DeviceID       string `json:"device_id" binding:"required"`
+		Status         string `json:"status"`
+		BatteryLevel   *int   `json:"battery_level"`
+		SignalStrength *int   `json:"signal_strength"`
+		FirmwareVersion string `json:"firmware_version"`
 	}
 
 	if err := c.ShouldBindJSON(&status); err != nil {
@@ -74,18 +78,27 @@ func (h *IoTHandler) ReceiveDeviceStatus(c *gin.Context) {
 		return
 	}
 
-	// Atualizar status do dispositivo via telemetria
-	telemetry := services.TelemetryData{
-		DeviceID:     status.DeviceID,
-		Status:       status.Status,
-		BatteryLevel: status.BatteryLevel,
-		Timestamp:    time.Now(),
-	}
-
 	ctx := context.Background()
-	if err := h.iotService.ProcessTelemetry(ctx, telemetry); err != nil {
+	
+	// Update device status in database
+	if err := h.iotService.UpdateDeviceStatus(ctx, status.DeviceID, status.Status, 
+		status.BatteryLevel, status.SignalStrength, status.FirmwareVersion); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Get updated brace information for WebSocket event
+	var brace models.Brace
+	if err := h.iotService.GetDB().Where("device_id = ?", status.DeviceID).First(&brace).Error; err != nil {
+		log.Printf("Warning: Could not find brace for WebSocket event: %v", err)
+	} else {
+		// Publish WebSocket event for device status change
+		if h.eventHandler != nil {
+			deviceStatus := models.DeviceStatus(status.Status)
+			if err := h.eventHandler.PublishDeviceStatusEvent(ctx, status.DeviceID, deviceStatus, &brace); err != nil {
+				log.Printf("Warning: Failed to publish device status event: %v", err)
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Status updated"})
@@ -99,10 +112,27 @@ func (h *IoTHandler) ReceiveDeviceAlert(c *gin.Context) {
 	}
 
 	ctx := context.Background()
-	// Processar alerta
+	
+	// Create alert in database
 	if err := h.alertService.CreateAlert(ctx, &alert); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Get patient name for WebSocket event
+	var patientName string
+	if alert.PatientID != nil {
+		var patient models.Patient
+		if err := h.iotService.GetDB().Select("name").First(&patient, *alert.PatientID).Error; err == nil {
+			patientName = patient.Name
+		}
+	}
+
+	// Publish WebSocket event for new alert
+	if h.eventHandler != nil {
+		if err := h.eventHandler.PublishAlertEvent(ctx, &alert, patientName); err != nil {
+			log.Printf("Warning: Failed to publish alert event: %v", err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Alert received"})
@@ -292,75 +322,34 @@ func (h *IoTHandler) GetAlertStatistics(c *gin.Context) {
 }
 
 func (h *IoTHandler) HandleWebSocket(c *gin.Context) {
+	// Upgrade HTTP connection to WebSocket
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("Failed to upgrade connection: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to upgrade to WebSocket"})
 		return
 	}
-	defer conn.Close()
 
-	// Register client
-	h.clientsMutex.Lock()
-	h.clients[conn] = true
-	h.clientsMutex.Unlock()
-
-	// Clean up when client disconnects
-	defer func() {
-		h.clientsMutex.Lock()
-		delete(h.clients, conn)
-		h.clientsMutex.Unlock()
-	}()
-
-	// Send initial status
-	h.sendInitialStatus(conn)
-
-	// Keep connection alive and handle incoming messages
-	for {
-		_, _, err := conn.ReadMessage()
-		if err != nil {
-			log.Printf("WebSocket read error: %v", err)
-			break
-		}
-		// Echo received messages or handle specific commands
+	// Create new client
+	client := &services.Client{
+		ID:            uuid.New().String(),
+		Conn:          conn,
+		Send:          make(chan []byte, 256),
+		Subscriptions: make(map[string]bool),
+		UserID:        "", // Will be set after authentication
+		LastPong:      time.Now(),
 	}
-}
 
-func (h *IoTHandler) handleBroadcasts() {
-	for {
-		message := <-h.broadcast
-		h.clientsMutex.RLock()
-		for client := range h.clients {
-			err := client.WriteMessage(websocket.TextMessage, message)
-			if err != nil {
-				log.Printf("WebSocket write error: %v", err)
-				client.Close()
-				delete(h.clients, client)
-			}
-		}
-		h.clientsMutex.RUnlock()
-	}
-}
+	// Register client with WebSocket server
+	if h.wsServer != nil {
+		h.wsServer.Register <- client
 
-func (h *IoTHandler) sendInitialStatus(conn *websocket.Conn) {
-	// Send current system status
-	status := map[string]interface{}{
-		"type":      "status",
-		"timestamp": time.Now(),
-		"message":   "Connected to OrtoTrack IoT Platform",
-	}
-	
-	if data, err := json.Marshal(status); err == nil {
-		conn.WriteMessage(websocket.TextMessage, data)
-	}
-}
-
-func (h *IoTHandler) BroadcastRealtimeData(data interface{}) {
-	if jsonData, err := json.Marshal(data); err == nil {
-		select {
-		case h.broadcast <- jsonData:
-		default:
-			// Channel is full, skip this broadcast
-		}
+		// Start client read and write pumps
+		go client.WritePump(h.wsServer)
+		go client.ReadPump(h.wsServer)
+	} else {
+		log.Printf("WebSocket server not initialized")
+		conn.Close()
 	}
 }
 

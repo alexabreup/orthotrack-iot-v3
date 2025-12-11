@@ -28,10 +28,13 @@ type DatabaseConfig struct {
 }
 
 type RedisConfig struct {
-	Host     string
-	Port     string
-	Password string
-	DB       int
+	Host         string
+	Port         string
+	Password     string
+	DB           int
+	PoolSize     int
+	MinIdleConns int
+	MaxRetries   int
 }
 
 type JWTConfig struct {
@@ -73,6 +76,9 @@ func Load() *Config {
 	}
 
 	redisDB, _ := strconv.Atoi(getEnv("REDIS_DB", "0"))
+	redisPoolSize, _ := strconv.Atoi(getEnv("REDIS_POOL_SIZE", "10"))
+	redisMinIdleConns, _ := strconv.Atoi(getEnv("REDIS_MIN_IDLE_CONNS", "5"))
+	redisMaxRetries, _ := strconv.Atoi(getEnv("REDIS_MAX_RETRIES", "3"))
 	jwtExpire, _ := strconv.Atoi(getEnv("JWT_EXPIRE_HOURS", "24"))
 	batteryLow, _ := strconv.Atoi(getEnv("ALERT_BATTERY_LOW", "20"))
 	complianceLow, _ := strconv.ParseFloat(getEnv("ALERT_COMPLIANCE_LOW", "80"), 64)
@@ -92,10 +98,13 @@ func Load() *Config {
 			SSLMode:  getEnv("DB_SSL_MODE", "require"), // Default mais seguro
 		},
 		Redis: RedisConfig{
-			Host:     getEnv("REDIS_HOST", "redis"),
-			Port:     getEnv("REDIS_PORT", "6379"),
-			Password: getEnv("REDIS_PASSWORD", ""),
-			DB:       redisDB,
+			Host:         getEnv("REDIS_HOST", "redis"),
+			Port:         getEnv("REDIS_PORT", "6379"),
+			Password:     getEnv("REDIS_PASSWORD", ""),
+			DB:           redisDB,
+			PoolSize:     redisPoolSize,
+			MinIdleConns: redisMinIdleConns,
+			MaxRetries:   redisMaxRetries,
 		},
 		JWT: JWTConfig{
 			Secret:      getEnvRequired("JWT_SECRET"),

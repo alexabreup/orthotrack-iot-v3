@@ -39,6 +39,7 @@ type Brace struct {
 	
 	// Identificação do Dispositivo
 	DeviceID        string         `json:"device_id" gorm:"size:50;uniqueIndex;not null"` // ID único do ESP32
+	APIKey          string         `json:"api_key" gorm:"size:100;uniqueIndex;not null"` // Chave de API para autenticação
 	SerialNumber    string         `json:"serial_number" gorm:"size:100;uniqueIndex;not null"`
 	MacAddress      string         `json:"mac_address" gorm:"size:17;uniqueIndex;not null"`
 	Model           string         `json:"model" gorm:"size:50;default:ESP32-ORTHO-V1"`

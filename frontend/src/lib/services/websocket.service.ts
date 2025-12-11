@@ -174,7 +174,12 @@ export class WebSocketClient {
   }
 
   private getDefaultWebSocketUrl(): string {
-    // Determine WebSocket URL based on environment
+    // Use environment variable if available
+    if (typeof window !== 'undefined' && import.meta.env.VITE_WS_URL) {
+      return import.meta.env.VITE_WS_URL;
+    }
+    
+    // Fallback: Determine WebSocket URL based on environment
     if (typeof window !== 'undefined') {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname;

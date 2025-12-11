@@ -1,68 +1,177 @@
-# Environment variables
+# OrthoTrack IoT v3 - .gitignore
+
+# Environment files
 .env
 .env.local
+.env.production
 .env.*.local
+backend/.env
+backend/.env.production
+frontend/.env.production
 
-# Dependencies
-node_modules/
-vendor/
+# Secrets and sensitive data
+*.key
+*.pem
+*.p12
+*.pfx
+mosquitto_passwd
+.secrets
+.env.secrets
+
+# Logs
+logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
 
-# Build outputs
-dist/
-build/
-*.exe
-*.dll
-*.so
-*.dylib
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
 
-# IDE
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# Next.js build output
+.next
+
+# Nuxt.js build / generate output
+.nuxt
+dist
+
+# Gatsby files
+.cache/
+public
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/
+
+# Editor directories and files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
-# Docker
-*.pid
-*.seed
-*.pid.lock
+# Go specific
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-# Temporary files
-tmp/
-temp/
-*.tmp
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories (remove the comment below to include it)
+vendor/
+
+# Go workspace file
+go.work
+
+# Build outputs
+build/
+dist/
+*.tar.gz
+
+# Docker
+.dockerignore
+
+# Backup files
+*.backup
+*.bak
+*.old
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 
-# Go specific
-*.test
-*.out
-go.work
+# Monitoring data
+monitoring/prometheus/data/
+monitoring/grafana/data/
+monitoring/alertmanager/data/
 
-# Android
-*.apk
-*.aab
-.keystore
-android/app/release/
+# Backup directory
+backups/
+*.sql.gz
 
-# Frontend
+# PlatformIO
+esp32-firmware/.pio/
+esp32-firmware/.vscode/
+esp32-firmware/lib/
+esp32-firmware/test/
+
+# Certificates
+*.crt
+*.csr
+
+# Local development
+.local/
+.cache/
+
+# SvelteKit
 .svelte-kit/
-.output/
+build/
+package/
 
-
-
-
-
-
-
-
-
-
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*

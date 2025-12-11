@@ -41,6 +41,10 @@ export function formatBatteryLevel(level: number): string {
 	return `${level}%`;
 }
 
+export function formatTemperature(temperature: number): string {
+	return `${temperature.toFixed(1)}°C`;
+}
+
 export function formatCPF(cpf: string): string {
 	const cleaned = cpf.replace(/\D/g, '');
 	if (cleaned.length !== 11) return cpf;

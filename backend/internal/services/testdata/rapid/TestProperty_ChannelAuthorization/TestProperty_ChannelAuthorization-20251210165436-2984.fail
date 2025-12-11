@@ -1,0 +1,18 @@
+# 2025/12/10 16:54:36.400898 [TestProperty_ChannelAuthorization] [rapid] draw userID: 0x0
+# 2025/12/10 16:54:36.400906 [TestProperty_ChannelAuthorization] [rapid] draw institutionID: 0x0
+# 2025/12/10 16:54:36.400997 [TestProperty_ChannelAuthorization] [rapid] draw role: "admin"
+# 2025/12/10 16:54:36.401002 [TestProperty_ChannelAuthorization] [rapid] draw channelType: "patient"
+# 2025/12/10 16:54:36.401004 [TestProperty_ChannelAuthorization] [rapid] draw patientID: 0x100000000
+# 2025/12/10 16:54:36.401008 [TestProperty_ChannelAuthorization] Expected valid channel format for patient:4294967296, but got error: patient ID must be numeric
+# 
+v0.4.8#13499809721577476474
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x38e38e38e38e4
+0x2
+0x1b66c353c10067
+0x100000000

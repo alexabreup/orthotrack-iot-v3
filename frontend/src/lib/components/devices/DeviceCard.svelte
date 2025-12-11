@@ -2,13 +2,23 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
-	import DeviceStatus from '$lib/components/dashboard/DeviceStatus.svelte';
+	import DeviceStatusBadge from './DeviceStatusBadge.svelte';
 	import { Smartphone, Battery } from 'lucide-svelte';
-	import { formatRelativeTime } from '$lib/utils/formatters';
-	import { DEVICE_STATUS_COLORS } from '$lib/utils/constants';
+	import { formatRelativeTime, formatBatteryLevel } from '$lib/utils/formatters';
+	import { deviceStatuses } from '$lib/stores/device-statuses.store';
 	import type { Brace } from '$lib/types/device';
+	import type { DeviceStatus } from '$lib/types/websocket';
 
 	export let device: Brace;
+
+	// Get real-time device status from store, fallback to device data
+	$: realtimeStatus = $deviceStatuses.get(device.device_id);
+	$: currentStatus = realtimeStatus || {
+		device_id: device.device_id,
+		status: device.status as 'online' | 'offline' | 'maintenance',
+		timestamp: device.last_seen ? new Date(device.last_seen).getTime() : Date.now(),
+		battery_level: device.battery_level
+	};
 </script>
 
 <Card class="p-4">
@@ -17,9 +27,7 @@
 			<div class="flex items-center gap-2 mb-2">
 				<Smartphone class="h-5 w-5 text-muted-foreground" />
 				<h3 class="text-lg font-semibold">{device.device_id}</h3>
-				<Badge variant={DEVICE_STATUS_COLORS[device.status] || 'default'}>
-					{device.status}
-				</Badge>
+				<DeviceStatusBadge deviceStatus={currentStatus} />
 			</div>
 			<div class="space-y-1 text-sm text-muted-foreground">
 				{#if device.serial_number}
@@ -28,16 +36,12 @@
 				{#if device.mac_address}
 					<p>MAC: {device.mac_address}</p>
 				{/if}
-				{#if device.last_seen}
-					<p>Última vez visto: {formatRelativeTime(device.last_seen)}</p>
+				{#if currentStatus.battery_level !== undefined}
+					<div class="flex items-center gap-1">
+						<Battery class="h-4 w-4" />
+						<span>{formatBatteryLevel(currentStatus.battery_level)}</span>
+					</div>
 				{/if}
-			</div>
-			<div class="mt-3">
-				<DeviceStatus
-					status={device.status}
-					batteryLevel={device.battery_level}
-					lastSeen={device.last_seen}
-				/>
 			</div>
 		</div>
 		<div class="flex flex-col gap-2">

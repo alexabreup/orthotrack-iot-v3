@@ -1,0 +1,9 @@
+# 2025/12/10 16:54:36.436962 [TestProperty_ChannelTypeConsistency] [rapid] draw channelType: "patient"
+# 2025/12/10 16:54:36.436969 [TestProperty_ChannelTypeConsistency] [rapid] draw patientID: 0x100000000
+# 2025/12/10 16:54:36.436972 [TestProperty_ChannelTypeConsistency] Expected valid channel format for patient:4294967296, but got error: patient ID must be numeric
+# 
+v0.4.8#5348629871996661415
+0x38e38e38e38e4
+0x2
+0x1b66c353c10067
+0x100000000

@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -329,33 +328,3 @@ func (eh *EventHandler) ConvertSensorReadingToTelemetryEvent(reading *models.Sen
 	return event
 }
 
-// ValidateChannelFormat validates WebSocket channel format
-func ValidateChannelFormat(channel string) error {
-	if len(channel) == 0 {
-		return fmt.Errorf("channel cannot be empty")
-	}
-
-	// Valid channel formats:
-	// - device:{device_id}
-	// - patient:{patient_id}
-	// - dashboard
-	// - alerts:global
-
-	validPrefixes := []string{"device:", "patient:", "dashboard", "alerts:"}
-	
-	for _, prefix := range validPrefixes {
-		if len(channel) >= len(prefix) && channel[:len(prefix)] == prefix {
-			if prefix == "dashboard" && channel == "dashboard" {
-				return nil
-			}
-			if prefix == "alerts:" && channel == "alerts:global" {
-				return nil
-			}
-			if (prefix == "device:" || prefix == "patient:") && len(channel) > len(prefix) {
-				return nil
-			}
-		}
-	}
-
-	return fmt.Errorf("invalid channel format: %s", channel)
-}

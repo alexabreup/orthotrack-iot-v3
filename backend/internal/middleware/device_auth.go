@@ -59,7 +59,7 @@ func DeviceAuthWithDB(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			// Verificar se dispositivo está ativo
-			if brace.Status != "active" {
+			if brace.Status != "active" && brace.Status != "online" {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Device not active"})
 				c.Abort()
 				return

@@ -20,6 +20,8 @@ type IoTService struct {
 	config      *config.Config
 	mqttService *MQTTService
 	alertService *AlertService
+	eventHandler *EventHandler
+	dashboardStatsService *DashboardStatsService
 }
 
 type TelemetryData struct {
@@ -50,6 +52,14 @@ func (s *IoTService) SetMQTTService(mqtt *MQTTService) {
 
 func (s *IoTService) SetAlertService(alert *AlertService) {
 	s.alertService = alert
+}
+
+func (s *IoTService) SetEventHandler(eventHandler *EventHandler) {
+	s.eventHandler = eventHandler
+}
+
+func (s *IoTService) SetDashboardStatsService(dashboardStatsService *DashboardStatsService) {
+	s.dashboardStatsService = dashboardStatsService
 }
 
 func (s *IoTService) GetDB() *gorm.DB {
@@ -97,6 +107,13 @@ func (s *IoTService) ProcessTelemetry(ctx context.Context, data TelemetryData) e
 
 	// Publicar dados em tempo real via WebSocket
 	s.publishRealtimeData(ctx, data.DeviceID, data)
+
+	// Publish WebSocket telemetry event
+	if s.eventHandler != nil {
+		if err := s.eventHandler.PublishTelemetryEvent(ctx, &sensorReading, data.DeviceID); err != nil {
+			log.Printf("Warning: Failed to publish telemetry event: %v", err)
+		}
+	}
 
 	return nil
 }
@@ -259,6 +276,24 @@ func (s *IoTService) updateUsageSession(ctx context.Context, brace *models.Brace
 			log.Printf("Error creating usage session: %v", err)
 		} else {
 			log.Printf("Started new usage session for device %s", brace.DeviceID)
+			
+			// Publish WebSocket event for session start
+			if s.eventHandler != nil {
+				if err := s.eventHandler.PublishUsageSessionEvent(ctx, &newSession, "start", brace.DeviceID); err != nil {
+					log.Printf("Warning: Failed to publish usage session start event: %v", err)
+				}
+			}
+
+			// Trigger dashboard stats recalculation on session start
+			if s.dashboardStatsService != nil {
+				// Get institution ID from patient
+				var institutionID *uint
+				var patient models.Patient
+				if err := s.db.Select("institution_id").First(&patient, *brace.PatientID).Error; err == nil {
+					institutionID = &patient.InstitutionID
+				}
+				s.dashboardStatsService.RecalculateStatsOnSessionChange(ctx, institutionID)
+			}
 		}
 	}
 }
@@ -270,6 +305,13 @@ func (s *IoTService) endActiveSession(ctx context.Context, patientID uint, brace
 		First(&activeSession).Error
 
 	if err == nil {
+		// Get brace info for device ID
+		var brace models.Brace
+		var deviceID string
+		if err := s.db.First(&brace, braceID).Error; err == nil {
+			deviceID = brace.DeviceID
+		}
+
 		activeSession.EndSession()
 		if err := s.db.Save(&activeSession).Error; err != nil {
 			log.Printf("Error ending usage session: %v", err)
@@ -277,6 +319,24 @@ func (s *IoTService) endActiveSession(ctx context.Context, patientID uint, brace
 			duration := activeSession.GetDurationMinutes()
 			log.Printf("Ended usage session for brace %d, duration: %d minutes", 
 				braceID, duration)
+			
+			// Publish WebSocket event for session end
+			if s.eventHandler != nil && deviceID != "" {
+				if err := s.eventHandler.PublishUsageSessionEvent(ctx, &activeSession, "end", deviceID); err != nil {
+					log.Printf("Warning: Failed to publish usage session end event: %v", err)
+				}
+			}
+
+			// Trigger dashboard stats recalculation on session end
+			if s.dashboardStatsService != nil {
+				// Get institution ID from patient
+				var institutionID *uint
+				var patient models.Patient
+				if err := s.db.Select("institution_id").First(&patient, patientID).Error; err == nil {
+					institutionID = &patient.InstitutionID
+				}
+				s.dashboardStatsService.RecalculateStatsOnSessionChange(ctx, institutionID)
+			}
 		}
 	}
 }
@@ -445,7 +505,24 @@ func (s *IoTService) UpdateDeviceStatus(ctx context.Context, deviceID, status st
 		brace.FirmwareVersion = firmwareVersion
 	}
 
-	return s.db.Save(&brace).Error
+	if err := s.db.Save(&brace).Error; err != nil {
+		return err
+	}
+
+	// Trigger dashboard stats recalculation on device status change
+	if s.dashboardStatsService != nil {
+		// Get institution ID from patient if available
+		var institutionID *uint
+		if brace.PatientID != nil {
+			var patient models.Patient
+			if err := s.db.Select("institution_id").First(&patient, *brace.PatientID).Error; err == nil {
+				institutionID = &patient.InstitutionID
+			}
+		}
+		s.dashboardStatsService.RecalculateStatsOnDeviceChange(ctx, institutionID)
+	}
+
+	return nil
 }
 
 // UpdateDeviceHeartbeat atualiza o heartbeat de um dispositivo

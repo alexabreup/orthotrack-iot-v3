@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { dashboardService } from '$lib/services/dashboard.service';
 	import { alertsService } from '$lib/services/alerts.service';
 	import StatsCard from '$lib/components/dashboard/StatsCard.svelte';
@@ -7,8 +7,12 @@
 	import { LoadingSpinner } from '$lib/components/common';
 	import Card from '$lib/components/ui/Card.svelte';
 	import { Users, Smartphone, AlertCircle, TrendingUp } from 'lucide-svelte';
+	import { getWebSocketClient } from '$lib/services/websocket.service';
+	import { dashboardStats, initializeDashboardStatsStore } from '$lib/stores/dashboard-stats.store';
+	import { activeAlerts, initializeActiveAlertsStore } from '$lib/stores/active-alerts.store';
 	import type { DashboardOverview } from '$lib/services/dashboard.service';
 	import type { Alert } from '$lib/types/alert';
+	import type { DashboardStatsEvent } from '$lib/types/websocket';
 	
 	let overview: DashboardOverview | null = null;
 	let recentAlerts: Alert[] = [];
@@ -17,7 +21,33 @@
 	
 	onMount(async () => {
 		await loadData();
+		initializeRealTimeUpdates();
 	});
+
+	onDestroy(() => {
+		cleanupRealTimeUpdates();
+	});
+
+	function initializeRealTimeUpdates() {
+		// Initialize stores
+		initializeDashboardStatsStore();
+		initializeActiveAlertsStore();
+		
+		// Subscribe to dashboard channel
+		const wsClient = getWebSocketClient();
+		wsClient.subscribe('dashboard');
+
+		// Handle dashboard stats events
+		wsClient.on('dashboard_stats', (event: DashboardStatsEvent) => {
+			// Stats will be automatically updated via the store
+			console.log('Dashboard stats updated:', event.data);
+		});
+	}
+
+	function cleanupRealTimeUpdates() {
+		const wsClient = getWebSocketClient();
+		wsClient.unsubscribe('dashboard');
+	}
 	
 	async function loadData() {
 		loading = true;
@@ -53,36 +83,36 @@
 			{error}
 		</div>
 	{:else if overview}
-		<!-- Statistics Cards -->
+		<!-- Statistics Cards - Real-time Updates -->
 		<div class="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
 			<StatsCard
-				title="Total de Pacientes"
-				value={overview.total_patients || 0}
+				title="Pacientes Ativos"
+				value={$dashboardStats.active_patients || overview.total_patients || 0}
 				icon={Users}
 			/>
 			<StatsCard
 				title="Dispositivos Online"
-				value={overview.online_devices || 0}
+				value={$dashboardStats.online_devices || overview.online_devices || 0}
 				description={`de ${overview.total_devices || 0} total`}
 				icon={Smartphone}
 			/>
 			<StatsCard
 				title="Alertas Ativos"
-				value={overview.active_alerts || 0}
-				description={`${overview.critical_alerts || 0} críticos`}
+				value={$dashboardStats.active_alerts || overview.active_alerts || 0}
+				description={`${$activeAlerts.filter(a => a.severity === 'critical').length} críticos`}
 				icon={AlertCircle}
 			/>
 			<StatsCard
 				title="Compliance Médio"
-				value={`${(overview.total_compliance_percent || 0).toFixed(1)}%`}
+				value={`${($dashboardStats.average_compliance || overview.total_compliance_percent || 0).toFixed(1)}%`}
 				description={`${(overview.avg_daily_usage_hours || 0).toFixed(1)}h/dia`}
 				icon={TrendingUp}
 			/>
 		</div>
 		
 		<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-			<!-- Recent Alerts -->
-			<AlertList alerts={recentAlerts} maxItems={5} />
+			<!-- Recent Alerts - Real-time Updates -->
+			<AlertList alerts={$activeAlerts.slice(0, 5)} maxItems={5} />
 			
 			<!-- Recent Activity -->
 			<Card class="p-6">

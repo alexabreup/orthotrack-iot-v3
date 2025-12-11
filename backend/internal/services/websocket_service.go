@@ -36,7 +36,7 @@ type RedisManager struct {
 }
 
 // NewRedisManager creates a new Redis manager with connection pooling
-func NewRedisManager(host, port, password string, db int) *RedisManager {
+func NewRedisManager(host, port, password string, db, poolSize, minIdleConns, maxRetries int) *RedisManager {
 	// Generate unique instance ID
 	instanceID := generateInstanceID()
 	
@@ -44,9 +44,9 @@ func NewRedisManager(host, port, password string, db int) *RedisManager {
 		Addr:         fmt.Sprintf("%s:%s", host, port),
 		Password:     password,
 		DB:           db,
-		PoolSize:     10,
-		MinIdleConns: 5,
-		MaxRetries:   3,
+		PoolSize:     poolSize,
+		MinIdleConns: minIdleConns,
+		MaxRetries:   maxRetries,
 		DialTimeout:  5 * time.Second,
 		ReadTimeout:  3 * time.Second,
 		WriteTimeout: 3 * time.Second,
