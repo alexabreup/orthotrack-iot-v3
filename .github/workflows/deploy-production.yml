@@ -43,6 +43,9 @@ jobs:
       - name: Enable memory overcommit for Redis
         run: sudo sysctl -w vm.overcommit_memory=1
 
+      - name: Install Redis CLI tools
+        run: sudo apt-get update && sudo apt-get install -y redis-tools
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -68,9 +71,14 @@ jobs:
       - name: Wait for Redis to be ready
         run: |
           echo "Waiting for Redis to be ready..."
-          timeout 60 bash -c 'until redis-cli -h localhost -p 6379 ping | grep -q PONG; do echo "Waiting for Redis..."; sleep 2; done'
+          # First check if port is open
+          timeout 30 bash -c 'until nc -z localhost 6379; do echo "Waiting for Redis port..."; sleep 1; done'
+          echo "Redis port is open!"
+          # Then verify Redis is responding
+          timeout 30 bash -c 'until redis-cli -h localhost -p 6379 ping | grep -q PONG; do echo "Waiting for Redis PING..."; sleep 1; done'
           echo "Redis is ready and responding to PING!"
-          redis-cli -h localhost -p 6379 info server | head -10
+          # Show Redis info for debugging
+          redis-cli -h localhost -p 6379 info server | head -5
 
       - name: Run backend tests
         env:
