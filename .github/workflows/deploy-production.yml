@@ -85,7 +85,22 @@ jobs:
 
       - name: 🧪 Run backend tests
         working-directory: ./backend
-        run: go test -v -timeout 10m ./...
+        run: |
+          echo "======================================"
+          echo "Running all backend tests with verbose output"
+          echo "======================================"
+          go test -v -timeout 10m -count=1 ./... 2>&1 | tee test-output.log || true
+          echo ""
+          echo "======================================"
+          echo "Test Summary:"
+          echo "======================================"
+          if grep -q "FAIL" test-output.log; then
+            echo "❌ Some tests failed. Details above."
+            grep "FAIL" test-output.log
+            exit 1
+          else
+            echo "✅ All tests passed!"
+          fi
         env:
           REDIS_ADDR: localhost:6379
           REDIS_HOST: localhost
@@ -105,11 +120,10 @@ jobs:
           cd frontend
           npm ci --legacy-peer-deps
 
-      # Temporariamente removido até configurar testes adequados
-      # - name: Run frontend tests
-      #   run: |
-      #     cd frontend
-      #     npm test
+      - name: Run frontend tests
+        run: |
+          cd frontend
+          npm test
 
   build:
     name: 🏗️ Build Images
