@@ -282,12 +282,33 @@ func connectRedis(cfg *config.Config) *redis.Client {
 		MaxRetries:   cfg.Redis.MaxRetries,
 	})
 
-	ctx := context.Background()
-	if err := client.Ping(ctx).Err(); err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
+	// Retry connection with exponential backoff
+	maxRetries := 10
+	baseDelay := 1 * time.Second
+	
+	for i := 0; i < maxRetries; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := client.Ping(ctx).Err()
+		cancel()
+		
+		if err == nil {
+			log.Printf("✅ Connected to Redis: %s:%s (attempt %d/%d)", cfg.Redis.Host, cfg.Redis.Port, i+1, maxRetries)
+			return client
+		}
+		
+		if i == maxRetries-1 {
+			log.Fatalf("❌ Failed to connect to Redis after %d attempts: %v", maxRetries, err)
+		}
+		
+		delay := baseDelay * time.Duration(1<<uint(i)) // Exponential backoff
+		if delay > 30*time.Second {
+			delay = 30 * time.Second // Cap at 30 seconds
+		}
+		
+		log.Printf("⚠️ Redis connection attempt %d/%d failed: %v. Retrying in %v...", i+1, maxRetries, err, delay)
+		time.Sleep(delay)
 	}
-
-	log.Printf("Connected to Redis: %s:%s", cfg.Redis.Host, cfg.Redis.Port)
+	
 	return client
 }
 
