@@ -73,13 +73,44 @@ services:
         max-file: "3"
 
   backend:
-    image: alexabreup/orthotrack-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: orthotrack-backend
     restart: unless-stopped
     ports:
       - "8080:8080"
-    env_file:
-      - .env.production
+    environment:
+      # Database
+      DB_HOST: orthotrack-postgres
+      DB_PORT: 5432
+      DB_NAME: orthotrack_prod
+      DB_USER: orthotrack
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_SSL_MODE: disable
+      
+      # Redis
+      REDIS_HOST: orthotrack-redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      REDIS_DB: 0
+      
+      # MQTT
+      MQTT_HOST: orthotrack-mqtt
+      MQTT_PORT: 1883
+      MQTT_BROKER_URL: tcp://orthotrack-mqtt:1883
+      MQTT_USERNAME: ${MQTT_USERNAME:-orthotrack}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-mqtt123}
+      
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-YourSecretJWTKeyHere123456789}
+      
+      # Server
+      PORT: 8080
+      GIN_MODE: release
+      
+      # CORS
+      ALLOWED_ORIGINS: "http://72.60.50.248:3000,http://72.60.50.248:8080,http://localhost:3000,http://localhost:5173,http://localhost:5174"
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,9 +133,17 @@ services:
         max-file: "5"
 
   frontend:
-    image: alexabreup/orthotrack-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+        VITE_API_BASE_URL: http://72.60.50.248:8080
+        VITE_WS_URL: ws://72.60.50.248:8080/ws
     container_name: orthotrack-frontend
     restart: unless-stopped
+    ports:
+      - "3000:3000"
     networks:
       - orthotrack-network
     healthcheck:
