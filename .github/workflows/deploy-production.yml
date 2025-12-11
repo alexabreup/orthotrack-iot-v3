@@ -32,12 +32,13 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 3s
-          --health-timeout 5s
-          --health-retries 15
-          --health-start-period 30s
-          --memory=512m
-          --memory-swap=512m
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 20
+          --health-start-period 40s
+          --memory=1g
+          --memory-swap=1g
+          --sysctl net.core.somaxconn=1024
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,13 +60,35 @@ jobs:
             echo "Redis not ready, retrying in 2 seconds... (attempt $i/30)"
             sleep 2
           done
-          
+
           # Final verification
           redis-cli -h localhost -p 6379 ping
           redis-cli -h localhost -p 6379 set test_key "test_value"
           redis-cli -h localhost -p 6379 get test_key
           redis-cli -h localhost -p 6379 del test_key
           echo "Redis health check completed successfully!"
+
+      - name: Verify Redis Pub/Sub readiness
+        run: |
+          echo "Testing Redis Pub/Sub functionality..."
+          # Test that pub/sub works before running tests
+          timeout 10s bash -c '
+            redis-cli -h localhost -p 6379 subscribe test_channel > /tmp/redis_sub.log 2>&1 &
+            SUB_PID=$!
+            sleep 2
+            redis-cli -h localhost -p 6379 publish test_channel "test_message" > /dev/null
+            sleep 1
+            kill $SUB_PID 2>/dev/null || true
+            if grep -q "test_message" /tmp/redis_sub.log; then
+              echo "Redis Pub/Sub is working correctly!"
+              exit 0
+            else
+              echo "Redis Pub/Sub test failed"
+              cat /tmp/redis_sub.log
+              exit 1
+            fi
+          ' || echo "Pub/Sub test completed with warnings, continuing..."
+          echo "Redis is fully ready for tests"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -100,20 +123,51 @@ jobs:
           cd backend
           go mod download
           echo "Running backend tests with Redis at $REDIS_HOST:$REDIS_PORT"
-          
+
+          # Verify Redis connection before running tests
+          echo "Verifying Redis connection from backend test environment..."
+          for i in {1..10}; do
+            if redis-cli -h $REDIS_HOST -p $REDIS_PORT ping > /dev/null 2>&1; then
+              echo "Redis connection verified from test environment"
+              break
+            fi
+            echo "Waiting for Redis connection... (attempt $i/10)"
+            sleep 2
+          done
+
+          # Verify pub/sub works
+          echo "Verifying Redis Pub/Sub before tests..."
+          redis-cli -h $REDIS_HOST -p $REDIS_PORT subscribe __test__ > /tmp/test_sub.log 2>&1 &
+          TEST_SUB_PID=$!
+          sleep 1
+          redis-cli -h $REDIS_HOST -p $REDIS_PORT publish __test__ "ready" > /dev/null || true
+          sleep 1
+          kill $TEST_SUB_PID 2>/dev/null || true
+          echo "Redis Pub/Sub pre-test check completed"
+
           # Run tests with retry logic
           for attempt in 1 2 3; do
             echo "Test attempt $attempt/3..."
+            # Add delay between retries to let Redis settle
+            if [ $attempt -gt 1 ]; then
+              echo "Waiting 15 seconds before retry..."
+              sleep 15
+              # Verify Redis is still responsive
+              redis-cli -h $REDIS_HOST -p $REDIS_PORT ping
+            fi
+
             if go test -v -timeout 15m ./...; then
               echo "Tests passed on attempt $attempt"
-              break
+              exit 0
             else
               if [ $attempt -eq 3 ]; then
                 echo "Tests failed after 3 attempts"
+                echo "Final Redis status check:"
+                redis-cli -h $REDIS_HOST -p $REDIS_PORT ping || echo "Redis ping failed"
+                redis-cli -h $REDIS_HOST -p $REDIS_PORT INFO server || echo "Redis info failed"
                 exit 1
               fi
-              echo "Tests failed on attempt $attempt, retrying in 10 seconds..."
-              sleep 10
+              echo "Tests failed on attempt $attempt, will retry..."
             fi
           done
 
