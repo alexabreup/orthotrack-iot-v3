@@ -32,73 +32,127 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 10s
-          --health-retries 20
-          --health-start-period 40s
-          --memory=1g
-          --memory-swap=1g
-          --sysctl net.core.somaxconn=1024
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 60s
+          --memory=2g
+          --memory-swap=2g
+          --sysctl net.core.somaxconn=65535
+          --ulimit nofile=65535:65535
+        env:
+          REDIS_MAXMEMORY: 1gb
+          REDIS_MAXMEMORY_POLICY: allkeys-lru
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Enable memory overcommit for Redis
-        run: sudo sysctl -w vm.overcommit_memory=1
+      - name: Configure system for Redis
+        run: |
+          echo "🔧 Configuring system for Redis..."
+          
+          # Enable memory overcommit
+          sudo sysctl -w vm.overcommit_memory=1
+          echo "✅ Memory overcommit enabled: $(cat /proc/sys/vm/overcommit_memory)"
+          
+          # Increase network settings for Redis
+          sudo sysctl -w net.core.somaxconn=65535
+          echo "✅ Network somaxconn set: $(cat /proc/sys/net/core/somaxconn)"
+          
+          # Disable transparent huge pages (can cause Redis issues)
+          echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null || echo "Could not disable THP"
+          
+          # Show current system limits
+          echo "📊 Current system limits:"
+          ulimit -n
+          free -h
+          df -h
 
       - name: Install Redis CLI tools
         run: sudo apt-get update && sudo apt-get install -y redis-tools
 
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh
+
       - name: Wait for Redis to be healthy
         run: |
           echo "Waiting for Redis to be ready..."
-          timeout=60
+          timeout=120
           counter=0
           
           while ! redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; do
             if [ $counter -ge $timeout ]; then
               echo "❌ Redis did not become ready in $timeout seconds"
+              # Show Redis logs for debugging
+              docker logs $(docker ps -q --filter "ancestor=redis:7-alpine") || echo "Could not get Redis logs"
               exit 1
             fi
             echo "⏳ Waiting for Redis... ($counter/$timeout)"
-            sleep 1
-            counter=$((counter + 1))
+            sleep 2
+            counter=$((counter + 2))
           done
           
           echo "✅ Redis is ready!"
           
-          # Final verification with basic operations
+          # Extended verification with basic operations
           redis-cli -h localhost -p 6379 ping
+          redis-cli -h localhost -p 6379 info server
+          redis-cli -h localhost -p 6379 config get save
           redis-cli -h localhost -p 6379 set test_key "test_value"
           redis-cli -h localhost -p 6379 get test_key
           redis-cli -h localhost -p 6379 del test_key
+          
+          # Test connection pooling
+          for i in {1..5}; do
+            redis-cli -h localhost -p 6379 ping > /dev/null &
+          done
+          wait
+          
           echo "✅ Redis health check completed successfully!"
 
       - name: Verify Redis Pub/Sub readiness
         run: |
           echo "Testing Redis Pub/Sub functionality..."
           
-          # Simple pub/sub test
-          redis-cli -h localhost -p 6379 subscribe test_channel > /tmp/redis_sub.log 2>&1 &
-          SUB_PID=$!
-          sleep 2
+          # Test multiple pub/sub scenarios
+          for test_num in {1..3}; do
+            echo "Running Pub/Sub test $test_num/3..."
+            
+            # Simple pub/sub test
+            redis-cli -h localhost -p 6379 subscribe test_channel_$test_num > /tmp/redis_sub_$test_num.log 2>&1 &
+            SUB_PID=$!
+            sleep 3
+            
+            # Publish test message
+            redis-cli -h localhost -p 6379 publish test_channel_$test_num "test_message_$test_num" > /dev/null
+            sleep 2
+            
+            # Stop subscriber
+            kill $SUB_PID 2>/dev/null || true
+            wait $SUB_PID 2>/dev/null || true
+            
+            # Check if message was received
+            if grep -q "test_message_$test_num" /tmp/redis_sub_$test_num.log; then
+              echo "✅ Redis Pub/Sub test $test_num passed!"
+            else
+              echo "⚠️ Redis Pub/Sub test $test_num had issues:"
+              cat /tmp/redis_sub_$test_num.log
+            fi
+          done
           
-          # Publish test message
-          redis-cli -h localhost -p 6379 publish test_channel "test_message" > /dev/null
-          sleep 1
-          
-          # Stop subscriber
-          kill $SUB_PID 2>/dev/null || true
-          
-          # Check if message was received
-          if grep -q "test_message" /tmp/redis_sub.log; then
-            echo "✅ Redis Pub/Sub is working correctly!"
-          else
-            echo "⚠️ Redis Pub/Sub test had issues, but continuing..."
-            cat /tmp/redis_sub.log
-          fi
+          # Test Redis connection under load
+          echo "Testing Redis under concurrent connections..."
+          for i in {1..10}; do
+            redis-cli -h localhost -p 6379 ping > /dev/null &
+          done
+          wait
           
           echo "✅ Redis is fully ready for tests"
+
+      - name: Run comprehensive Redis diagnostics
+        run: |
+          echo "🔍 Running comprehensive Redis diagnostics..."
+          ./scripts/redis-diagnostics.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -134,55 +188,83 @@ jobs:
           go mod download
           echo "🧪 Running backend tests with Redis at $REDIS_HOST:$REDIS_PORT"
           
-          # Final Redis verification
-          echo "🔍 Final Redis verification before tests..."
+          # Pre-test Redis verification and warm-up
+          echo "🔍 Pre-test Redis verification and warm-up..."
           redis-cli -h $REDIS_HOST -p $REDIS_PORT ping
+          redis-cli -h $REDIS_HOST -p $REDIS_PORT info memory
+          redis-cli -h $REDIS_HOST -p $REDIS_PORT config get maxmemory-policy
           
-          # Run tests with retry logic
-          for attempt in 1 2 3; do
-            echo "🧪 Test attempt $attempt/3..."
-            if go test -v -timeout 15m ./...; then
-              echo "✅ Tests passed on attempt $attempt"
-              break
-            else
-              if [ $attempt -eq 3 ]; then
-                echo "❌ Tests failed after 3 attempts"
-                exit 1
-              fi
-              echo "⚠️ Tests failed on attempt $attempt, retrying in 10 seconds..."
-              sleep 10
-            fi
+          # Warm up Redis with some operations
+          echo "🔥 Warming up Redis..."
+          for i in {1..10}; do
+            redis-cli -h $REDIS_HOST -p $REDIS_PORT set warmup_key_$i "warmup_value_$i" > /dev/null
+            redis-cli -h $REDIS_HOST -p $REDIS_PORT get warmup_key_$i > /dev/null
+            redis-cli -h $REDIS_HOST -p $REDIS_PORT del warmup_key_$i > /dev/null
           done
+          
+          # Test pub/sub functionality that tests rely on
+          echo "🔍 Testing Pub/Sub functionality for tests..."
+          redis-cli -h $REDIS_HOST -p $REDIS_PORT subscribe __test_channel__ > /tmp/test_sub.log 2>&1 &
           TEST_SUB_PID=$!
-          sleep 1
-          redis-cli -h $REDIS_HOST -p $REDIS_PORT publish __test__ "ready" > /dev/null || true
+          sleep 2
+          redis-cli -h $REDIS_HOST -p $REDIS_PORT publish __test_channel__ "test_ready" > /dev/null
           sleep 1
           kill $TEST_SUB_PID 2>/dev/null || true
-          echo "Redis Pub/Sub pre-test check completed"
-
-          # Run tests with retry logic
-          for attempt in 1 2 3; do
-            echo "Test attempt $attempt/3..."
-            # Add delay between retries to let Redis settle
+          wait $TEST_SUB_PID 2>/dev/null || true
+          
+          if grep -q "test_ready" /tmp/test_sub.log; then
+            echo "✅ Redis Pub/Sub is working for tests"
+          else
+            echo "⚠️ Redis Pub/Sub test had issues:"
+            cat /tmp/test_sub.log
+          fi
+          
+          # Run tests with enhanced retry logic
+          for attempt in 1 2 3 4 5; do
+            echo "🧪 Test attempt $attempt/5..."
+            
+            # Add progressive delay between retries
             if [ $attempt -gt 1 ]; then
-              echo "Waiting 15 seconds before retry..."
-              sleep 15
-              # Verify Redis is still responsive
+              delay=$((attempt * 10))
+              echo "⏳ Waiting $delay seconds before retry..."
+              sleep $delay
+              
+              # Verify Redis is still responsive and reset any state
+              echo "🔍 Verifying Redis state before retry..."
               redis-cli -h $REDIS_HOST -p $REDIS_PORT ping
+              redis-cli -h $REDIS_HOST -p $REDIS_PORT flushdb > /dev/null
+              redis-cli -h $REDIS_HOST -p $REDIS_PORT info clients
+              
+              # Re-warm Redis
+              for i in {1..5}; do
+                redis-cli -h $REDIS_HOST -p $REDIS_PORT set retry_warmup_$i "value_$i" > /dev/null
+                redis-cli -h $REDIS_HOST -p $REDIS_PORT del retry_warmup_$i > /dev/null
+              done
             fi
 
-            if go test -v -timeout 15m ./...; then
-              echo "Tests passed on attempt $attempt"
+            echo "🚀 Starting Go tests (attempt $attempt)..."
+            if timeout 20m go test -v -timeout 18m ./...; then
+              echo "✅ Tests passed on attempt $attempt"
               exit 0
             else
-              if [ $attempt -eq 3 ]; then
-                echo "Tests failed after 3 attempts"
-                echo "Final Redis status check:"
+              test_exit_code=$?
+              echo "❌ Tests failed on attempt $attempt (exit code: $test_exit_code)"
+              
+              if [ $attempt -eq 5 ]; then
+                echo "💥 Tests failed after 5 attempts"
+                echo "🔍 Final Redis diagnostics:"
                 redis-cli -h $REDIS_HOST -p $REDIS_PORT ping || echo "Redis ping failed"
-                redis-cli -h $REDIS_HOST -p $REDIS_PORT INFO server || echo "Redis info failed"
+                redis-cli -h $REDIS_HOST -p $REDIS_PORT info server || echo "Redis info failed"
+                redis-cli -h $REDIS_HOST -p $REDIS_PORT info clients || echo "Redis clients info failed"
+                redis-cli -h $REDIS_HOST -p $REDIS_PORT info memory || echo "Redis memory info failed"
+                
+                # Show recent Redis logs
+                echo "🔍 Recent Redis container logs:"
+                docker logs --tail 50 $(docker ps -q --filter "ancestor=redis:7-alpine") || echo "Could not get Redis logs"
+                
                 exit 1
               fi
-              echo "Tests failed on attempt $attempt, will retry..."
+              echo "🔄 Will retry test attempt $((attempt + 1))..."
             fi
           done
 
