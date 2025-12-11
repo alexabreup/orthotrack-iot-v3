@@ -32,12 +32,16 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Enable memory overcommit for Redis
+        run: sudo sysctl -w vm.overcommit_memory=1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,14 +67,22 @@ jobs:
 
       - name: Wait for Redis to be ready
         run: |
-          timeout 30 bash -c 'until nc -z localhost 6379; do echo "Waiting for Redis..."; sleep 1; done'
-          echo "Redis is ready!"
+          echo "Waiting for Redis to be ready..."
+          timeout 60 bash -c 'until redis-cli -h localhost -p 6379 ping | grep -q PONG; do echo "Waiting for Redis..."; sleep 2; done'
+          echo "Redis is ready and responding to PING!"
+          redis-cli -h localhost -p 6379 info server | head -10
 
       - name: Run backend tests
+        env:
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: ""
+          REDIS_DB: 0
         run: |
           cd backend
           go mod download
-          go test -v ./...
+          echo "Running backend tests with Redis at $REDIS_HOST:$REDIS_PORT"
+          go test -v -timeout 10m ./...
 
   build:
     name: 🏗️ Build Images
