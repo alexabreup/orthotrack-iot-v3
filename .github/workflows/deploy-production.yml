@@ -61,6 +61,11 @@ jobs:
         with:
           go-version: '1.21'
 
+      - name: Wait for Redis to be ready
+        run: |
+          timeout 30 bash -c 'until nc -z localhost 6379; do echo "Waiting for Redis..."; sleep 1; done'
+          echo "Redis is ready!"
+
       - name: Run backend tests
         run: |
           cd backend

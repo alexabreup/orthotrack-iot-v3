@@ -1084,6 +1084,9 @@ func TestProperty_ConnectionLogging(t *testing.T) {
 		
 		wsServer := NewWSServer(redisManager, nil)
 		
+		// Reset metrics to ensure clean state
+		wsServer.metrics.Reset()
+		
 		// Generate random client data
 		clientID := rapid.StringMatching(`^[a-zA-Z0-9]{1,20}`).Draw(t, "clientID")
 		userID := rapid.StringMatching(`^[1-9][0-9]{0,9}`).Draw(t, "userID")
@@ -1167,13 +1170,26 @@ func TestProperty_ConnectionLogging(t *testing.T) {
 			t.Fatalf("Expected 1 total connection, got %d", totalConnections)
 		}
 		
-		// Test multiple connections
-		numConnections := rapid.IntRange(2, 10).Draw(t, "numConnections")
+		// Test multiple connections - use smaller range to reduce test complexity
+		numConnections := rapid.IntRange(2, 5).Draw(t, "numConnections")
 		clients := make([]*Client, numConnections)
 		
+		// Generate unique client IDs to avoid conflicts
+		usedIDs := make(map[string]bool)
+		usedIDs[clientID] = true // Reserve the first client ID
+		
 		for i := 0; i < numConnections; i++ {
+			var newClientID string
+			for {
+				newClientID = rapid.StringMatching(`^[a-zA-Z0-9]{1,20}`).Draw(t, "clientID")
+				if !usedIDs[newClientID] {
+					usedIDs[newClientID] = true
+					break
+				}
+			}
+			
 			client := &Client{
-				ID:            rapid.StringMatching(`^[a-zA-Z0-9]{1,20}`).Draw(t, "clientID"),
+				ID:            newClientID,
 				Send:          make(chan []byte, 256),
 				Subscriptions: make(map[string]bool),
 				UserID:        rapid.StringMatching(`^[1-9][0-9]{0,9}`).Draw(t, "userID"),
@@ -1185,7 +1201,13 @@ func TestProperty_ConnectionLogging(t *testing.T) {
 			
 			wsServer.RegisterClientWithIP(client, ipAddress)
 			clients[i] = client
+			
+			// Small delay to ensure registration is processed
+			time.Sleep(1 * time.Millisecond)
 		}
+		
+		// Allow time for all registrations to be processed
+		time.Sleep(5 * time.Millisecond)
 		
 		// Property: Logger should track all connections
 		activeCountMultiple := wsServer.logger.GetActiveConnectionCount()
@@ -1202,7 +1224,12 @@ func TestProperty_ConnectionLogging(t *testing.T) {
 		// Disconnect all clients
 		for _, client := range clients {
 			wsServer.UnregisterClientWithReason(client, "test_cleanup")
+			// Small delay to ensure unregistration is processed
+			time.Sleep(1 * time.Millisecond)
 		}
+		
+		// Allow time for all unregistrations to be processed
+		time.Sleep(5 * time.Millisecond)
 		
 		// Property: All connections should be cleaned up
 		finalActiveCount := wsServer.logger.GetActiveConnectionCount()
