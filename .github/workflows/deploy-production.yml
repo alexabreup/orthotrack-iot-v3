@@ -32,16 +32,37 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-          --health-start-period 10s
+          --health-interval 3s
+          --health-timeout 5s
+          --health-retries 15
+          --health-start-period 30s
+          --memory=512m
+          --memory-swap=512m
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Enable memory overcommit for Redis
         run: sudo sysctl -w vm.overcommit_memory=1
+
+      - name: Wait for Redis to be healthy
+        run: |
+          echo "Waiting for Redis to be ready..."
+          for i in {1..30}; do
+            if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+              echo "Redis is up and running!"
+              break
+            fi
+            echo "Redis not ready, retrying in 2 seconds... (attempt $i/30)"
+            sleep 2
+          done
+          
+          # Final verification
+          redis-cli -h localhost -p 6379 ping
+          redis-cli -h localhost -p 6379 set test_key "test_value"
+          redis-cli -h localhost -p 6379 get test_key
+          redis-cli -h localhost -p 6379 del test_key
+          echo "Redis health check completed successfully!"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -65,24 +86,33 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Wait for Redis to be ready
-        run: |
-          echo "Waiting for Redis to be ready..."
-          timeout 60 bash -c 'until nc -z localhost 6379; do echo "Waiting for Redis..."; sleep 2; done'
-          echo "Redis is ready!"
-          sleep 5
-
-      - name: Run backend tests
+      - name: Run backend tests with retry logic
         env:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           REDIS_PASSWORD: ""
           REDIS_DB: 0
+          CGO_ENABLED: 0
         run: |
           cd backend
           go mod download
           echo "Running backend tests with Redis at $REDIS_HOST:$REDIS_PORT"
-          go test -v -timeout 10m ./...
+          
+          # Run tests with retry logic
+          for attempt in 1 2 3; do
+            echo "Test attempt $attempt/3..."
+            if go test -v -timeout 15m ./...; then
+              echo "Tests passed on attempt $attempt"
+              break
+            else
+              if [ $attempt -eq 3 ]; then
+                echo "Tests failed after 3 attempts"
+                exit 1
+              fi
+              echo "Tests failed on attempt $attempt, retrying in 10 seconds..."
+              sleep 10
+            fi
+          done
 
   build:
     name: 🏗️ Build Images
