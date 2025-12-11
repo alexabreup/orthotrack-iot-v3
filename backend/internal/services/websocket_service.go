@@ -69,16 +69,41 @@ func (rm *RedisManager) Connect(ctx context.Context) error {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	
-	// Test connection
-	_, err := rm.client.Ping(ctx).Result()
-	if err != nil {
-		log.Printf("Failed to connect to Redis: %v", err)
-		return err
+	maxRetries := 10
+	baseDelay := 1 * time.Second
+	
+	for i := 0; i < maxRetries; i++ {
+		// Test connection
+		_, err := rm.client.Ping(ctx).Result()
+		if err == nil {
+			rm.connected = true
+			log.Printf("✅ Redis connection established (instance: %s, attempt: %d/%d)", rm.instanceID, i+1, maxRetries)
+			return nil
+		}
+		
+		if i == maxRetries-1 {
+			log.Printf("❌ Failed to connect to Redis after %d attempts: %v", maxRetries, err)
+			return fmt.Errorf("failed to connect to Redis after %d attempts: %w", maxRetries, err)
+		}
+		
+		// Calculate exponential backoff delay
+		delay := baseDelay * time.Duration(1<<uint(i))
+		if delay > 30*time.Second {
+			delay = 30 * time.Second
+		}
+		
+		log.Printf("⚠️ Redis connection attempt %d/%d failed: %v. Retrying in %v...", i+1, maxRetries, err, delay)
+		
+		// Wait before retry, but respect context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+			// Continue to next retry
+		}
 	}
 	
-	rm.connected = true
-	log.Printf("Redis connection established (instance: %s)", rm.instanceID)
-	return nil
+	return fmt.Errorf("failed to connect to Redis after %d attempts", maxRetries)
 }
 
 // IsConnected returns the connection status
@@ -103,24 +128,51 @@ func (rm *RedisManager) Reconnect(ctx context.Context) error {
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	
-	// Close existing connection
-	if rm.client != nil {
-		rm.client.Close()
-	}
+	maxRetries := 5
+	baseDelay := 2 * time.Second
 	
-	// Create new client
-	rm.client = redis.NewClient(rm.config)
-	
-	// Test connection
-	_, err := rm.client.Ping(ctx).Result()
-	if err != nil {
+	for i := 0; i < maxRetries; i++ {
+		// Close existing connection
+		if rm.client != nil {
+			rm.client.Close()
+		}
+		
+		// Create new client
+		rm.client = redis.NewClient(rm.config)
+		
+		// Test connection
+		_, err := rm.client.Ping(ctx).Result()
+		if err == nil {
+			rm.connected = true
+			log.Printf("✅ Redis reconnection successful (instance: %s, attempt: %d/%d)", rm.instanceID, i+1, maxRetries)
+			return nil
+		}
+		
 		rm.connected = false
-		return err
+		
+		if i == maxRetries-1 {
+			log.Printf("❌ Failed to reconnect to Redis after %d attempts: %v", maxRetries, err)
+			return fmt.Errorf("failed to reconnect to Redis after %d attempts: %w", maxRetries, err)
+		}
+		
+		// Calculate exponential backoff delay
+		delay := baseDelay * time.Duration(1<<uint(i))
+		if delay > 30*time.Second {
+			delay = 30 * time.Second
+		}
+		
+		log.Printf("⚠️ Redis reconnection attempt %d/%d failed: %v. Retrying in %v...", i+1, maxRetries, err, delay)
+		
+		// Wait before retry, but respect context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+			// Continue to next retry
+		}
 	}
 	
-	rm.connected = true
-	log.Printf("Redis reconnection successful (instance: %s)", rm.instanceID)
-	return nil
+	return fmt.Errorf("failed to reconnect to Redis after %d attempts", maxRetries)
 }
 
 // StartHealthCheck starts a goroutine to monitor Redis connection health
