@@ -78,8 +78,25 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
-    env_file:
-      - .env.production
+    environment:
+      - DB_HOST=orthotrack-postgres
+      - DB_PORT=5432
+      - DB_NAME=orthotrack_prod
+      - DB_USER=orthotrack
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=orthotrack-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_DB=0
+      - MQTT_HOST=orthotrack-mqtt
+      - MQTT_PORT=1883
+      - MQTT_BROKER_URL=tcp://orthotrack-mqtt:1883
+      - MQTT_USERNAME=orthotrack
+      - MQTT_PASSWORD=${MQTT_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=8080
+      - GIN_MODE=release
+      - ALLOWED_ORIGINS=http://72.60.50.248:3000,http://72.60.50.248:8080,http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy
