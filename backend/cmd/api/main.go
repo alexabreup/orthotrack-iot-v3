@@ -273,6 +273,11 @@ func connectDatabase(cfg *config.Config) (*gorm.DB, error) {
 }
 
 func connectRedis(cfg *config.Config) *redis.Client {
+	// Set environment variables for the infrastructure package
+	os.Setenv("REDIS_HOST", cfg.Redis.Host)
+	os.Setenv("REDIS_PORT", cfg.Redis.Port)
+	os.Setenv("REDIS_PASSWORD", cfg.Redis.Password)
+	
 	client := redis.NewClient(&redis.Options{
 		Addr:         fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
 		Password:     cfg.Redis.Password,
@@ -280,14 +285,17 @@ func connectRedis(cfg *config.Config) *redis.Client {
 		PoolSize:     cfg.Redis.PoolSize,
 		MinIdleConns: cfg.Redis.MinIdleConns,
 		MaxRetries:   cfg.Redis.MaxRetries,
+		DialTimeout:  10 * time.Second,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
 	})
 
 	// Retry connection with exponential backoff
-	maxRetries := 10
+	maxRetries := 15
 	baseDelay := 1 * time.Second
 	
 	for i := 0; i < maxRetries; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		err := client.Ping(ctx).Err()
 		cancel()
 		
@@ -300,16 +308,19 @@ func connectRedis(cfg *config.Config) *redis.Client {
 			log.Fatalf("❌ Failed to connect to Redis after %d attempts: %v", maxRetries, err)
 		}
 		
-		delay := baseDelay * time.Duration(1<<uint(i)) // Exponential backoff
-		if delay > 30*time.Second {
-			delay = 30 * time.Second // Cap at 30 seconds
-		}
-		
+		delay := baseDelay * time.Duration(1<<uint(min(i, 5))) // Max 32 seconds
 		log.Printf("⚠️ Redis connection attempt %d/%d failed: %v. Retrying in %v...", i+1, maxRetries, err, delay)
 		time.Sleep(delay)
 	}
 	
 	return client
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func healthCheck(c *gin.Context) {

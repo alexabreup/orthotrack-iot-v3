@@ -32,133 +32,63 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
+          --health-interval 5s
+          --health-timeout 3s
           --health-retries 10
-          --health-start-period 30s
+          --health-start-period 10s
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure system for Redis
+      - name: 🔧 Enable memory overcommit
         run: |
-          echo "🔧 Configuring system for Redis..."
-          
-          # Enable memory overcommit - CRITICAL for Redis
           sudo sysctl -w vm.overcommit_memory=1
-          echo "✅ Memory overcommit enabled: $(cat /proc/sys/vm/overcommit_memory)"
-          
-          # Verify the setting took effect
-          if [ "$(cat /proc/sys/vm/overcommit_memory)" != "1" ]; then
-            echo "❌ Failed to enable memory overcommit!"
-            exit 1
-          fi
-          
-          # Show system info
-          echo "📊 System information:"
-          free -h
-          ulimit -n
-          
-          # Wait for Redis service to be created
-          echo "⏳ Waiting for Redis service to be created..."
-          sleep 10
+          sudo sysctl -p
 
-      - name: Install Redis CLI tools
-        run: sudo apt-get update && sudo apt-get install -y redis-tools
-
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
-
-      - name: Wait for Redis to be healthy
+      - name: ⏳ Wait for Redis to be fully ready
         run: |
-          echo "🔍 Waiting for Redis to be ready..."
+          echo "Waiting for Redis service to be healthy..."
+          sleep 5
           
-          # First, wait for the container to exist
-          echo "Checking if Redis container exists..."
-          for i in {1..30}; do
-            if docker ps --filter "ancestor=redis:7-alpine" --format "{{.ID}}" | head -1 > /dev/null; then
-              REDIS_CONTAINER=$(docker ps --filter "ancestor=redis:7-alpine" --format "{{.ID}}" | head -1)
-              echo "✅ Redis container found: $REDIS_CONTAINER"
+          # Verifica múltiplas vezes
+          for i in {1..15}; do
+            if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+              echo "✅ Redis ping successful!"
+              
+              # Testa operações básicas
+              redis-cli -h localhost -p 6379 SET test_key "test_value"
+              redis-cli -h localhost -p 6379 GET test_key
+              redis-cli -h localhost -p 6379 DEL test_key
+              
+              echo "✅ Redis is fully operational!"
               break
             fi
-            echo "⏳ Waiting for Redis container... ($i/30)"
+            echo "⏳ Attempt $i/15 - Waiting for Redis..."
             sleep 2
           done
           
-          # Show Redis container logs
-          echo "📋 Redis container logs:"
-          docker logs $REDIS_CONTAINER || echo "Could not get Redis logs"
-          
-          # Wait for Redis to respond to ping
-          echo "🏓 Testing Redis connectivity..."
-          timeout=180
-          counter=0
-          
-          while ! redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; do
-            if [ $counter -ge $timeout ]; then
-              echo "❌ Redis did not become ready in $timeout seconds"
-              echo "📋 Final Redis container logs:"
-              docker logs --tail 20 $REDIS_CONTAINER || echo "Could not get Redis logs"
-              echo "🔍 Container status:"
-              docker ps --filter "ancestor=redis:7-alpine"
-              exit 1
-            fi
-            echo "⏳ Waiting for Redis ping... ($counter/$timeout)"
-            sleep 3
-            counter=$((counter + 3))
-          done
-          
-          echo "✅ Redis is responding to ping!"
-          
-          # Basic verification
-          echo "🧪 Testing basic Redis operations..."
-          redis-cli -h localhost -p 6379 ping
-          redis-cli -h localhost -p 6379 info server | head -5
-          redis-cli -h localhost -p 6379 set test_key "test_value"
-          
-          if [ "$(redis-cli -h localhost -p 6379 get test_key)" = "test_value" ]; then
-            echo "✅ Basic Redis operations working"
-            redis-cli -h localhost -p 6379 del test_key
-          else
-            echo "❌ Basic Redis operations failed"
-            exit 1
-          fi
-          
-          echo "✅ Redis health check completed successfully!"
+          # Informações de debug
+          redis-cli -h localhost -p 6379 INFO server | grep redis_version
+          redis-cli -h localhost -p 6379 CONFIG GET maxmemory
 
-      - name: Verify Redis Pub/Sub readiness
-        run: |
-          echo "🔔 Testing Redis Pub/Sub functionality..."
-          
-          # Simple pub/sub test
-          echo "Starting subscriber..."
-          timeout 10s redis-cli -h localhost -p 6379 subscribe test_channel > /tmp/redis_sub.log 2>&1 &
-          SUB_PID=$!
-          sleep 3
-          
-          # Publish test message
-          echo "Publishing test message..."
-          redis-cli -h localhost -p 6379 publish test_channel "hello_world" > /dev/null
-          sleep 2
-          
-          # Stop subscriber
-          kill $SUB_PID 2>/dev/null || true
-          wait $SUB_PID 2>/dev/null || true
-          
-          # Check if message was received
-          if grep -q "hello_world" /tmp/redis_sub.log; then
-            echo "✅ Redis Pub/Sub is working!"
-          else
-            echo "⚠️ Redis Pub/Sub test had issues (but continuing):"
-            cat /tmp/redis_sub.log
-          fi
-          
-          echo "✅ Redis is ready for tests"
+      - name: 🔧 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
-      - name: Run comprehensive Redis diagnostics
-        run: |
-          echo "🔍 Running comprehensive Redis diagnostics..."
-          ./scripts/redis-diagnostics.sh
+      - name: 📦 Install backend dependencies
+        working-directory: ./backend
+        run: go mod download
+
+      - name: 🧪 Run backend tests
+        working-directory: ./backend
+        run: go test -v -timeout 10m ./...
+        env:
+          REDIS_ADDR: localhost:6379
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          REDIS_DB: 0
+          REDIS_PASSWORD: ""
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -176,70 +106,6 @@ jobs:
         run: |
           cd frontend
           npm test
-
-      - name: Setup Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.21'
-
-      - name: Run backend tests with retry logic
-        env:
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          REDIS_PASSWORD: ""
-          REDIS_DB: 0
-          CGO_ENABLED: 0
-        run: |
-          cd backend
-          go mod download
-          echo "🧪 Running backend tests with Redis at $REDIS_HOST:$REDIS_PORT"
-          
-          # Final Redis verification before tests
-          echo "🔍 Final Redis verification..."
-          redis-cli -h $REDIS_HOST -p $REDIS_PORT ping
-          redis-cli -h $REDIS_HOST -p $REDIS_PORT info server | grep redis_version
-          
-          # Run tests with retry logic - simplified approach
-          for attempt in 1 2 3; do
-            echo "🧪 Test attempt $attempt/3..."
-            
-            if [ $attempt -gt 1 ]; then
-              echo "⏳ Waiting 30 seconds before retry..."
-              sleep 30
-              
-              # Verify Redis is still working
-              if ! redis-cli -h $REDIS_HOST -p $REDIS_PORT ping > /dev/null; then
-                echo "❌ Redis is not responding before retry $attempt"
-                continue
-              fi
-              
-              # Clear Redis state
-              redis-cli -h $REDIS_HOST -p $REDIS_PORT flushall > /dev/null
-              echo "🔄 Redis state cleared for retry"
-            fi
-
-            echo "🚀 Starting Go tests (attempt $attempt)..."
-            if go test -v -timeout 10m ./...; then
-              echo "✅ Tests passed on attempt $attempt"
-              exit 0
-            else
-              test_exit_code=$?
-              echo "❌ Tests failed on attempt $attempt (exit code: $test_exit_code)"
-              
-              if [ $attempt -eq 3 ]; then
-                echo "💥 Tests failed after 3 attempts"
-                echo "🔍 Final diagnostics:"
-                redis-cli -h $REDIS_HOST -p $REDIS_PORT ping || echo "Redis ping failed"
-                redis-cli -h $REDIS_HOST -p $REDIS_PORT info server || echo "Redis info failed"
-                
-                # Show Redis logs
-                echo "🔍 Redis container logs:"
-                docker logs --tail 30 $(docker ps -q --filter "ancestor=redis:7-alpine") || echo "Could not get Redis logs"
-                
-                exit 1
-              fi
-            fi
-          done
 
   build:
     name: 🏗️ Build Images

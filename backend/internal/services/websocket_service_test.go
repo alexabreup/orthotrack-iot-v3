@@ -19,10 +19,9 @@ import (
 // For any device status change, the system should send a WebSocket event to all clients subscribed to that device's channel
 func TestProperty_DeviceStatusEventPropagation(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		// Setup: Create Redis manager
-		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
-		ctx := context.Background()
-		if err := redisManager.Connect(ctx); err != nil {
+		// Setup: Create Redis manager with robust configuration
+		redisManager, err := setupRedisForTest()
+		if err != nil {
 			t.Skip("Redis not available, skipping test")
 		}
 		defer redisManager.Close()
