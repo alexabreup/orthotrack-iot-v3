@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/joho/go-dotenv"
+	"github.com/joho/godotenv"
 )
 
 func init() {
