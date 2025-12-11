@@ -1,0 +1,50 @@
+name: Build and Deploy Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and Push Frontend
+        working-directory: ./frontend
+        run: |
+          docker build \
+            --build-arg PUBLIC_API_URL=${{ secrets.PUBLIC_API_URL }} \
+            --build-arg PUBLIC_WS_URL=${{ secrets.PUBLIC_WS_URL }} \
+            -t ghcr.io/${{ github.repository_owner }}/orthotrack-iot-v3/frontend:${{ github.sha }} \
+            -t ghcr.io/${{ github.repository_owner }}/orthotrack-iot-v3/frontend:latest \
+            .
+          docker push ghcr.io/${{ github.repository_owner }}/orthotrack-iot-v3/frontend:${{ github.sha }}
+          docker push ghcr.io/${{ github.repository_owner }}/orthotrack-iot-v3/frontend:latest
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/orthotrack
+            sed -i "s|frontend:.*|frontend:${{ github.sha }}|g" docker-compose.yml
+            docker compose pull frontend
+            docker compose up -d frontend
+            docker image prune -f
