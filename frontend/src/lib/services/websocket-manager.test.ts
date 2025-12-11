@@ -46,6 +46,16 @@ describe('WebSocket Manager Service', () => {
   });
 
   it('should handle initialization with token', async () => {
+    // Mock window.location for the test environment
+    Object.defineProperty(window, 'location', {
+      value: {
+        protocol: 'https:',
+        hostname: 'localhost',
+        href: 'https://localhost:3000'
+      },
+      writable: true
+    });
+
     // This test verifies the manager can be initialized
     // The actual WebSocket connection will be mocked in the underlying service
     await expect(websocketManager.initialize()).resolves.not.toThrow();
