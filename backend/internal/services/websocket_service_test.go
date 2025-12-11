@@ -157,7 +157,7 @@ func TestProperty_UnsubscribedClientsDoNotReceiveMessages(t *testing.T) {
 		}
 		
 		wsServer.registerClient(client)
-		err := client.Subscribe(channel1, wsServer)
+		err = client.Subscribe(channel1, wsServer)
 		if err != nil {
 			t.Fatalf("Failed to subscribe: %v", err)
 		}
@@ -922,6 +922,9 @@ func TestProperty_TelemetryEventPropagation(t *testing.T) {
 		authorizer := NewChannelAuthorizer(nil)
 		wsServer := NewWSServer(redisManager, authorizer)
 		eventHandler := NewEventHandler(wsServer)
+		
+		// Create context for the test
+		ctx := context.Background()
 		
 		// Generate random device ID
 		deviceID := rapid.StringMatching(`^[A-Z0-9]{3,20}$`).Draw(t, "deviceID")

@@ -69,11 +69,13 @@ func TestProperty_JWTAuthentication(t *testing.T) {
 			}
 
 			// Property: Returned values should match the token claims
-			if returnedUserID != fmt.Sprintf("%v", userID) {
-				t.Fatalf("Expected userID %v, got %s", userID, returnedUserID)
+			expectedUserID := fmt.Sprintf("%d", userID)
+			if returnedUserID != expectedUserID {
+				t.Fatalf("Expected userID %s, got %s", expectedUserID, returnedUserID)
 			}
-			if returnedInstitutionID != fmt.Sprintf("%v", institutionID) {
-				t.Fatalf("Expected institutionID %v, got %s", institutionID, returnedInstitutionID)
+			expectedInstitutionID := fmt.Sprintf("%d", institutionID)
+			if returnedInstitutionID != expectedInstitutionID {
+				t.Fatalf("Expected institutionID %s, got %s", expectedInstitutionID, returnedInstitutionID)
 			}
 			if returnedRole != role {
 				t.Fatalf("Expected role %s, got %s", role, returnedRole)
