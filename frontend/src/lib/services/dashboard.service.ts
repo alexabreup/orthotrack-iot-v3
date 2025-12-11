@@ -2,7 +2,7 @@
  * Serviço de dashboard
  */
 
-import { apiClient } from './api';
+import api from '$lib/api/client';
 
 export interface DashboardOverview {
 	total_patients: number;
@@ -43,18 +43,18 @@ export interface TelemetryPoint {
 
 export class DashboardService {
 	async getOverview(): Promise<DashboardOverview> {
-		return apiClient.get<DashboardOverview>('/api/v1/dashboard/overview');
+		return api.get<DashboardOverview>('/dashboard/overview');
 	}
 
 	async getRealtimeData(): Promise<RealtimeData> {
-		return apiClient.get<RealtimeData>('/api/v1/dashboard/realtime');
+		return api.get<RealtimeData>('/dashboard/realtime');
 	}
 
 	async getRealtime(deviceId?: string): Promise<RealtimeData> {
 		const url = deviceId
-			? `/api/v1/dashboard/realtime?device_id=${deviceId}`
-			: '/api/v1/dashboard/realtime';
-		return apiClient.get<RealtimeData>(url);
+			? `/dashboard/realtime?device_id=${deviceId}`
+			: '/dashboard/realtime';
+		return api.get<RealtimeData>(url);
 	}
 }
 

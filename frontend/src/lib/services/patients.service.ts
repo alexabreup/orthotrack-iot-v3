@@ -2,7 +2,7 @@
  * Serviço de gerenciamento de pacientes
  */
 
-import { apiClient } from './api';
+import api from '$lib/api/client';
 import type {
 	Patient,
 	CreatePatientData,
@@ -22,23 +22,23 @@ export class PatientsService {
 		if (params?.search) queryParams.append('search', params.search);
 
 		const query = queryParams.toString();
-		return apiClient.get<PatientsListResponse>(`/api/v1/patients${query ? `?${query}` : ''}`);
+		return api.get<PatientsListResponse>(`/patients${query ? `?${query}` : ''}`);
 	}
 
 	async get(id: number): Promise<Patient> {
-		return apiClient.get<Patient>(`/api/v1/patients/${id}`);
+		return api.get<Patient>(`/patients/${id}`);
 	}
 
 	async create(data: CreatePatientData): Promise<Patient> {
-		return apiClient.post<Patient>('/api/v1/patients', data);
+		return api.post<Patient>('/patients', data);
 	}
 
 	async update(id: number, data: UpdatePatientData): Promise<Patient> {
-		return apiClient.put<Patient>(`/api/v1/patients/${id}`, data);
+		return api.put<Patient>(`/patients/${id}`, data);
 	}
 
 	async delete(id: number): Promise<void> {
-		return apiClient.delete<void>(`/api/v1/patients/${id}`);
+		return api.delete<void>(`/patients/${id}`);
 	}
 }
 

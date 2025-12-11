@@ -174,27 +174,27 @@ export class WebSocketClient {
   }
 
   private getDefaultWebSocketUrl(): string {
-    // Use environment variable if available
-    if (typeof window !== 'undefined' && import.meta.env.VITE_WS_URL) {
-      return import.meta.env.VITE_WS_URL;
-    }
-    
-    // Fallback: Determine WebSocket URL based on environment
-    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // Use PUBLIC_ environment variables (available in browser)
+    if (typeof window !== 'undefined') {
+      const wsUrl = import.meta.env.PUBLIC_WS_URL;
+      if (wsUrl) {
+        return wsUrl;
+      }
+      
+      // Fallback: Determine WebSocket URL based on environment
       const host = window.location.hostname;
       
       // Development environment
       if (host === 'localhost' || host === '127.0.0.1' || host.includes('192.168')) {
-        return 'ws://192.168.43.205:8080/ws';
+        return 'ws://localhost:8080/ws';
       }
       
       // Production environment
-      return 'wss://api.orthotrack.alexptech.com/ws';
+      return 'wss://orthotrack.alexptech.com/ws';
     }
     
-    // Fallback for server-side rendering or test environment
-    return 'wss://api.orthotrack.alexptech.com/ws';
+    // Fallback for server-side rendering
+    return 'wss://orthotrack.alexptech.com/ws';
   }
 
   private handleOpen(): void {

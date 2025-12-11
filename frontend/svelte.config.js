@@ -3,14 +3,26 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
-	preprocess: vitePreprocess(),
-	kit: {
-		adapter: adapter({
-			out: 'build',
-			precompress: false,
-			envPrefix: 'VITE_'
-		})
-	}
+    preprocess: vitePreprocess(),
+    
+    kit: {
+        adapter: adapter({
+            out: 'build',
+            precompress: false,
+            envPrefix: 'PUBLIC_'
+        }),
+        
+        // Configuração de ambiente
+        env: {
+            publicPrefix: 'PUBLIC_',
+        },
+        
+        // Alias
+        alias: {
+            '$lib': 'src/lib',
+            '$lib/*': 'src/lib/*'
+        }
+    }
 };
 
 export default config;

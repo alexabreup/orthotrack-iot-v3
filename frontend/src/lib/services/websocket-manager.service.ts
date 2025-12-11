@@ -4,7 +4,7 @@
  */
 
 import { getWebSocketClient, type WebSocketClient } from './websocket.service';
-import { authService } from './auth.service';
+import { getAuthToken } from '$lib/api/client';
 import { addErrorToast, addInfoToast } from '$lib/stores/toast.store';
 import { goto } from '$app/navigation';
 import { writable } from 'svelte/store';
@@ -36,7 +36,7 @@ class WebSocketManagerService {
       return;
     }
 
-    const token = authService.getToken();
+    const token = getAuthToken();
     if (!token) {
       console.warn('No authentication token available for WebSocket connection');
       this.state.set({ status: 'error', error: 'No authentication token' });
@@ -81,9 +81,9 @@ class WebSocketManagerService {
    * Reconnect with fresh token (useful after token refresh)
    */
   async reconnectWithNewToken(): Promise<void> {
-    const token = authService.getToken();
+    const token = getAuthToken();
     if (!token) {
-      this.handleAuthenticationError();
+      this.handleAuthenticationError('No authentication token available');
       return;
     }
 
@@ -238,7 +238,9 @@ class WebSocketManagerService {
     // Clear authentication and redirect to login
     // Use setTimeout to ensure state updates are processed first
     setTimeout(() => {
-      authService.logout();
+      // Clear token and redirect
+      localStorage?.removeItem('auth_token');
+      localStorage?.removeItem('auth_user');
       goto('/login');
     }, 100);
   }

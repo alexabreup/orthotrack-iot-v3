@@ -16,15 +16,14 @@ COPY . .
 # Fix permissions for node_modules/.bin
 RUN chmod -R +x node_modules/.bin
 
-# Build arguments
-ARG NODE_ENV=production
-ARG VITE_API_URL=https://api.orthotrack.alexptech.com
-ARG VITE_WS_URL=wss://api.orthotrack.alexptech.com/ws
+# Build arguments - CRÍTICO!
+ARG PUBLIC_API_URL=https://orthotrack.alexptech.com/api
+ARG PUBLIC_WS_URL=wss://orthotrack.alexptech.com/ws
 
-# Set environment variables
-ENV NODE_ENV=$NODE_ENV
-ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_WS_URL=$VITE_WS_URL
+# Set environment variables for build
+ENV NODE_ENV=production
+ENV PUBLIC_API_URL=${PUBLIC_API_URL}
+ENV PUBLIC_WS_URL=${PUBLIC_WS_URL}
 
 # Build the application
 RUN npm run build
@@ -38,20 +37,26 @@ RUN apk add --no-cache wget
 # Create app directory
 WORKDIR /app
 
-# Copy built application (SvelteKit adapter-node output)
+# Copy package files
+COPY --from=builder /app/package*.json ./
+
+# Install production dependencies only
+RUN npm ci --only=production --legacy-peer-deps
+
+# Copy built app
 COPY --from=builder /app/build ./build
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S sveltekit -u 1001
+# Copy static files if they exist
+COPY --from=builder /app/static ./static 2>/dev/null || true
 
-# Change ownership
-RUN chown -R sveltekit:nodejs /app
-USER sveltekit
+# Environment variables for runtime
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV PORT=3000
+ENV ORIGIN=https://orthotrack.alexptech.com
+ENV PUBLIC_API_URL=https://orthotrack.alexptech.com/api
+ENV PUBLIC_WS_URL=wss://orthotrack.alexptech.com/ws
 
-# Expose port
 EXPOSE 3000
 
 # Health check

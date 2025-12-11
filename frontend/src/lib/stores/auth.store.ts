@@ -3,93 +3,135 @@
  */
 
 import { writable, derived } from 'svelte/store';
-import { authService, type User } from '$lib/services/auth.service';
 import { goto } from '$app/navigation';
+import api, { setAuthToken, getAuthToken } from '$lib/api/client';
 
-interface AuthState {
-	isAuthenticated: boolean;
-	user: User | null;
-	loading: boolean;
-	error: string | null;
+// Types
+export interface User {
+  id: number;
+  uuid: string;
+  name: string;
+  email: string;
+  role: string;
+  permissions?: any;
 }
 
+export interface AuthState {
+  user: User | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  error: string | null;
+}
+
+// Initial state
 const initialState: AuthState = {
-	isAuthenticated: false,
-	user: null,
-	loading: false,
-	error: null,
+  user: null,
+  token: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null,
 };
 
+// Create store
 function createAuthStore() {
-	const { subscribe, set, update } = writable<AuthState>(initialState);
-
-	// Verificar autenticação ao inicializar
-	if (typeof window !== 'undefined') {
-		const user = authService.getUser();
-		const isAuthenticated = authService.isAuthenticated();
-		
-		if (isAuthenticated && user) {
-			set({
-				isAuthenticated: true,
-				user,
-				loading: false,
-				error: null,
-			});
-		}
-	}
-
-	return {
-		subscribe,
-		login: async (email: string, password: string) => {
-			update((state) => ({ ...state, loading: true, error: null }));
-			
-			try {
-				const response = await authService.login(email, password);
-				console.log('Auth service login response:', response);
-				
-				set({
-					isAuthenticated: true,
-					user: response.user,
-					loading: false,
-					error: null,
-				});
-				
-				console.log('Auth store updated, attempting redirect...');
-				goto('/');
-			} catch (error) {
-				console.error('Login error:', error);
-				const errorMessage = error instanceof Error ? error.message : 'Erro ao fazer login';
-				set({
-					isAuthenticated: false,
-					user: null,
-					loading: false,
-					error: errorMessage,
-				});
-				throw error;
-			}
-		},
-		logout: () => {
-			authService.logout();
-			set(initialState);
-			goto('/login');
-		},
-		checkAuth: () => {
-			const isAuthenticated = authService.isAuthenticated();
-			const user = authService.getUser();
-			
-			set({
-				isAuthenticated,
-				user,
-				loading: false,
-				error: null,
-			});
-			
-			return isAuthenticated;
-		},
-	};
+  const { subscribe, set, update } = writable<AuthState>(initialState);
+  
+  return {
+    subscribe,
+    
+    // Initialize from localStorage
+    init: () => {
+      const token = getAuthToken();
+      if (token) {
+        update(state => ({ ...state, token, isAuthenticated: true, isLoading: true }));
+        authStore.verifyToken();
+      }
+    },
+    
+    // Login
+    login: async (email: string, password: string) => {
+      update(state => ({ ...state, isLoading: true, error: null }));
+      
+      try {
+        const response = await api.post<{ token: string; user: User }>(
+          '/auth/login',
+          { email, password },
+          { skipAuth: true }
+        );
+        
+        setAuthToken(response.token);
+        
+        update(state => ({
+          ...state,
+          user: response.user,
+          token: response.token,
+          isAuthenticated: true,
+          isLoading: false,
+          error: null,
+        }));
+        
+        goto('/dashboard');
+        
+        return response;
+      } catch (error: any) {
+        const message = error.data?.error || error.message || 'Erro ao fazer login';
+        
+        update(state => ({
+          ...state,
+          isLoading: false,
+          error: message,
+        }));
+        
+        throw new Error(message);
+      }
+    },
+    
+    // Logout
+    logout: async () => {
+      try {
+        await api.post('/auth/logout');
+      } catch (error) {
+        console.error('Logout error:', error);
+      } finally {
+        setAuthToken(null);
+        set(initialState);
+        goto('/login');
+      }
+    },
+    
+    // Verify token
+    verifyToken: async () => {
+      try {
+        const user = await api.get<User>('/auth/me');
+        
+        update(state => ({
+          ...state,
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+        }));
+      } catch (error) {
+        console.error('Token verification failed:', error);
+        setAuthToken(null);
+        set(initialState);
+        goto('/login');
+      }
+    },
+    
+    // Clear error
+    clearError: () => {
+      update(state => ({ ...state, error: null }));
+    },
+  };
 }
 
 export const authStore = createAuthStore();
+
+// Initialize on load
+if (typeof window !== 'undefined') {
+  authStore.init();
+}
 
 export const isAuthenticated = derived(authStore, ($auth) => $auth.isAuthenticated);
 export const currentUser = derived(authStore, ($auth) => $auth.user);

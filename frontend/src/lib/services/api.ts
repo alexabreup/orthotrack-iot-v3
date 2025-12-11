@@ -1,9 +1,12 @@
 /**
  * Cliente HTTP base para comunicação com a API
+ * @deprecated Use $lib/api/client.ts instead
  */
 
-// Para desenvolvimento, usar localhost se não especificado
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+import { API_V1_URL } from '$lib/config';
+
+// Use centralized config
+const API_BASE_URL = API_V1_URL;
 
 export interface ApiError {
 	message: string;

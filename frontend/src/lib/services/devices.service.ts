@@ -2,7 +2,7 @@
  * Serviço de gerenciamento de dispositivos (braces)
  */
 
-import { apiClient } from './api';
+import api from '$lib/api/client';
 import type {
 	Brace,
 	CreateBraceData,
@@ -24,31 +24,31 @@ export class DevicesService {
 		if (params?.search) queryParams.append('search', params.search);
 
 		const query = queryParams.toString();
-		return apiClient.get<DevicesListResponse>(`/api/v1/braces${query ? `?${query}` : ''}`);
+		return api.get<DevicesListResponse>(`/braces${query ? `?${query}` : ''}`);
 	}
 
 	async get(id: number): Promise<Brace> {
-		return apiClient.get<Brace>(`/api/v1/braces/${id}`);
+		return api.get<Brace>(`/braces/${id}`);
 	}
 
 	async create(data: CreateBraceData): Promise<Brace> {
-		return apiClient.post<Brace>('/api/v1/braces', data);
+		return api.post<Brace>('/braces', data);
 	}
 
 	async update(id: number, data: UpdateBraceData): Promise<Brace> {
-		return apiClient.put<Brace>(`/api/v1/braces/${id}`, data);
+		return api.put<Brace>(`/braces/${id}`, data);
 	}
 
 	async delete(id: number): Promise<void> {
-		return apiClient.delete<void>(`/api/v1/braces/${id}`);
+		return api.delete<void>(`/braces/${id}`);
 	}
 
 	async getCommands(id: number): Promise<CommandsListResponse> {
-		return apiClient.get<CommandsListResponse>(`/api/v1/braces/${id}/commands`);
+		return api.get<CommandsListResponse>(`/braces/${id}/commands`);
 	}
 
 	async sendCommand(id: number, command: DeviceCommand): Promise<CommandResponse> {
-		return apiClient.post<CommandResponse>(`/api/v1/braces/${id}/commands`, command);
+		return api.post<CommandResponse>(`/braces/${id}/commands`, command);
 	}
 }
 

@@ -2,7 +2,7 @@
  * Serviço de relatórios
  */
 
-import { apiClient } from './api';
+import api from '$lib/api/client';
 import type {
 	ComplianceReport,
 	UsageReport,
@@ -19,8 +19,8 @@ export class ReportsService {
 			queryParams.append('patient_id', params.patient_id.toString());
 		}
 
-		return apiClient.get<ComplianceReport>(
-			`/api/v1/reports/compliance?${queryParams.toString()}`
+		return api.get<ComplianceReport>(
+			`/reports/compliance?${queryParams.toString()}`
 		);
 	}
 
@@ -35,7 +35,7 @@ export class ReportsService {
 			queryParams.append('brace_id', params.brace_id.toString());
 		}
 
-		return apiClient.get<UsageReport>(`/api/v1/reports/usage?${queryParams.toString()}`);
+		return api.get<UsageReport>(`/reports/usage?${queryParams.toString()}`);
 	}
 }
 

@@ -2,7 +2,7 @@
  * Serviço de gerenciamento de alertas
  */
 
-import { apiClient } from './api';
+import api from '$lib/api/client';
 import type {
 	Alert,
 	AlertsListParams,
@@ -24,19 +24,19 @@ export class AlertsService {
 		if (params?.end_date) queryParams.append('end_date', params.end_date);
 
 		const query = queryParams.toString();
-		return apiClient.get<AlertsListResponse>(`/api/v1/alerts${query ? `?${query}` : ''}`);
+		return api.get<AlertsListResponse>(`/alerts${query ? `?${query}` : ''}`);
 	}
 
 	async get(id: number): Promise<Alert> {
-		return apiClient.get<Alert>(`/api/v1/alerts/${id}`);
+		return api.get<Alert>(`/alerts/${id}`);
 	}
 
 	async resolve(id: number, notes?: string): Promise<Alert> {
-		return apiClient.put<Alert>(`/api/v1/alerts/${id}/resolve`, { notes });
+		return api.put<Alert>(`/alerts/${id}/resolve`, { notes });
 	}
 
 	async getStatistics(period: string = '24h'): Promise<AlertStatistics> {
-		return apiClient.get<AlertStatistics>(`/api/v1/alerts/statistics?period=${period}`);
+		return api.get<AlertStatistics>(`/alerts/statistics?period=${period}`);
 	}
 }
 

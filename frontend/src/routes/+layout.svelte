@@ -33,13 +33,20 @@
 		
 		// Verificar autenticação apenas se não estiver na página de login
 		if (currentPath !== '/login') {
-			const isAuth = authStore.checkAuth();
-			if (!isAuth) {
-				goto('/login');
-			} else {
-				// Initialize WebSocket connection when authenticated
-				initializeWebSocket();
-			}
+			// Initialize auth store (will check token automatically)
+			authStore.init();
+			
+			// Subscribe to auth state to initialize WebSocket when authenticated
+			const unsubscribe = authStore.subscribe(($auth) => {
+				if ($auth.isAuthenticated) {
+					initializeWebSocket();
+				} else if (!$auth.isLoading) {
+					goto('/login');
+				}
+			});
+			
+			// Cleanup subscription on destroy
+			return () => unsubscribe();
 		}
 	});
 

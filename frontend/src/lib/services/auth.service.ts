@@ -2,7 +2,7 @@
  * Serviço de autenticação
  */
 
-import { apiClient } from './api';
+import api from '$lib/api/client';
 
 export interface LoginRequest {
 	email: string;
@@ -27,10 +27,10 @@ export interface User {
 export class AuthService {
 	async login(email: string, password: string): Promise<LoginResponse> {
 		// O backend aceita "email" como campo, mas pode ser username também
-		const response = await apiClient.post<LoginResponse>('/api/v1/auth/login', {
+		const response = await api.post<LoginResponse>('/auth/login', {
 			email: email, // Pode ser "admin" ou email
 			password,
-		});
+		}, { skipAuth: true });
 
 		// Armazenar token e usuário
 		if (typeof window !== 'undefined') {
