@@ -1,44 +1,52 @@
 #!/bin/bash
 
-# Script para corrigir Redis imediatamente no VPS
-echo "🔧 Corrigindo Redis no VPS..."
+# 🔧 Fix Imediato do Redis - OrthoTrack
+# Este script corrige o problema do Redis no docker-compose.yml
 
-# Parar Redis que está com problema
-echo "⏹️ Parando Redis problemático..."
-docker stop orthotrack-redis
-docker rm orthotrack-redis
+echo "🔧 Iniciando correção do Redis..."
 
-# Corrigir health check do Redis no docker-compose
-echo "📝 Corrigindo health check do Redis..."
-sed -i 's/test: \["CMD", "redis-cli", "--raw", "incr", "ping"\]/test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]/' docker-compose.prod.yml
+# Parar todos os containers
+echo "⏹️ Parando containers..."
+docker compose down
 
-# Recriar Redis com configuração correta
-echo "🚀 Recriando Redis..."
-docker-compose -f docker-compose.prod.yml up -d redis
+# Backup do arquivo atual
+echo "💾 Fazendo backup do docker-compose.yml..."
+cp docker-compose.yml docker-compose.yml.backup.$(date +%Y%m%d_%H%M%S)
 
-# Aguardar Redis ficar pronto
-echo "⏳ Aguardando Redis ficar pronto..."
-sleep 30
+# Criar versão corrigida do docker-compose.yml
+echo "🔄 Corrigindo configuração do Redis..."
+
+# Usar sed para corrigir a linha do comando do Redis
+sed -i 's/command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}/command: redis-server --appendonly yes --requirepass redis123/' docker-compose.yml
+
+echo "✅ Configuração do Redis corrigida!"
+
+# Verificar se a correção foi aplicada
+echo "🔍 Verificando correção..."
+grep -n "command: redis-server" docker-compose.yml
+
+# Reiniciar os serviços
+echo "🚀 Reiniciando serviços..."
+docker compose up -d
+
+# Aguardar um pouco para os serviços subirem
+echo "⏳ Aguardando serviços iniciarem..."
+sleep 10
 
 # Verificar status
-echo "🏥 Verificando status do Redis..."
-docker-compose -f docker-compose.prod.yml ps redis
+echo "📊 Verificando status dos containers..."
+docker compose ps
 
-# Testar Redis manualmente
-echo "🧪 Testando Redis..."
-docker exec orthotrack-redis redis-cli -a redis_secure_2024 ping
+# Testar conexão com Redis
+echo "🧪 Testando conexão com Redis..."
+docker exec orthotrack-redis redis-cli -a redis123 ping
 
-# Iniciar backend agora que Redis está funcionando
-echo "🚀 Iniciando backend..."
-docker-compose -f docker-compose.prod.yml up -d backend
-
-# Aguardar backend
-echo "⏳ Aguardando backend..."
-sleep 60
-
-# Verificar tudo
-echo "📊 Status final:"
-docker-compose -f docker-compose.prod.yml ps
-
-echo "✅ Correção concluída!"
-echo "🧪 Teste: curl http://localhost:8080/health"
+echo "✅ Fix do Redis concluído!"
+echo ""
+echo "📋 Resumo das alterações:"
+echo "- Removida dependência da variável REDIS_PASSWORD"
+echo "- Definida senha fixa 'redis123' para o Redis"
+echo "- Backup criado: docker-compose.yml.backup.*"
+echo ""
+echo "🔗 Para testar a conexão:"
+echo "docker exec orthotrack-redis redis-cli -a redis123 ping"
