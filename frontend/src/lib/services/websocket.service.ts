@@ -180,12 +180,12 @@ export class WebSocketClient {
     }
     
     // Fallback: Determine WebSocket URL based on environment
-    if (typeof window !== 'undefined' && window.location) {
+    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname;
       
       // Development environment
-      if (host && (host === 'localhost' || host === '127.0.0.1' || host.includes('192.168'))) {
+      if (host === 'localhost' || host === '127.0.0.1' || host.includes('192.168')) {
         return 'ws://192.168.43.205:8080/ws';
       }
       

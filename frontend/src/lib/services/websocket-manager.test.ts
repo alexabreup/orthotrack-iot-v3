@@ -53,7 +53,17 @@ describe('WebSocket Manager Service', () => {
         hostname: 'localhost',
         href: 'https://localhost:3000'
       },
-      writable: true
+      writable: true,
+      configurable: true
+    });
+
+    // Mock import.meta.env for test environment
+    vi.stubGlobal('import', {
+      meta: {
+        env: {
+          VITE_WS_URL: 'ws://localhost:8080/ws'
+        }
+      }
     });
 
     // This test verifies the manager can be initialized
