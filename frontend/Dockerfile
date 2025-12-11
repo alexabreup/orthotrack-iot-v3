@@ -13,6 +13,9 @@ RUN npm ci --legacy-peer-deps
 # Copy source code
 COPY . .
 
+# Fix permissions for node_modules/.bin
+RUN chmod -R +x node_modules/.bin
+
 # Build arguments
 ARG NODE_ENV=production
 ARG VITE_API_URL=https://api.orthotrack.alexptech.com
