@@ -46,8 +46,7 @@ RUN npm ci --only=production --legacy-peer-deps
 # Copy built app
 COPY --from=builder /app/build ./build
 
-# Copy static files if they exist
-COPY --from=builder /app/static ./static 2>/dev/null || true
+# Static files are already included in the build directory
 
 # Environment variables for runtime
 ENV NODE_ENV=production
