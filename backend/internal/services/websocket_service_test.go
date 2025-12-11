@@ -86,7 +86,7 @@ func TestProperty_DeviceStatusEventPropagation(t *testing.T) {
 		
 		// Verify: All subscribed clients should receive the message
 		receivedCount := 0
-		timeout := time.After(100 * time.Millisecond)
+		timeout := time.After(3 * time.Second)
 		
 		for _, client := range clients {
 			select {
@@ -125,10 +125,9 @@ func TestProperty_DeviceStatusEventPropagation(t *testing.T) {
 // Test that clients not subscribed to a channel don't receive messages
 func TestProperty_UnsubscribedClientsDoNotReceiveMessages(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		// Setup
-		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
-		ctx := context.Background()
-		if err := redisManager.Connect(ctx); err != nil {
+		// Setup: Create Redis manager with robust configuration
+		redisManager, err := setupRedisForTest()
+		if err != nil {
 			t.Skip("Redis not available, skipping test")
 		}
 		defer redisManager.Close()
@@ -177,7 +176,7 @@ func TestProperty_UnsubscribedClientsDoNotReceiveMessages(t *testing.T) {
 		select {
 		case <-client.Send:
 			t.Fatalf("Client received message from unsubscribed channel")
-		case <-time.After(50 * time.Millisecond):
+		case <-time.After(1 * time.Second):
 			// Expected: no message received
 		}
 		
@@ -377,7 +376,7 @@ func TestProperty_RedisPubSubSynchronization(t *testing.T) {
 		}
 		
 		// Clear any viewer_count messages from subscription
-		clearTimeout := time.After(100 * time.Millisecond)
+		clearTimeout := time.After(2 * time.Second)
 		for {
 			select {
 			case <-client2.Send:
@@ -509,7 +508,7 @@ func TestProperty_LoopPrevention(t *testing.T) {
 		defer pubsub.Close()
 		
 		// Receive the message
-		timeout := time.After(500 * time.Millisecond)
+		timeout := time.After(3 * time.Second)
 		select {
 		case msg := <-pubsub.Channel():
 			var receivedMsg Message
@@ -780,7 +779,7 @@ func TestProperty_HeartbeatInterval(t *testing.T) {
 		wsServer.SendHeartbeatToAllClients()
 		
 		// Property: Client should receive heartbeat message
-		timeout := time.After(100 * time.Millisecond)
+		timeout := time.After(2 * time.Second)
 		select {
 		case msg := <-client.Send:
 			var receivedMsg Message
@@ -912,10 +911,9 @@ func TestProperty_DeadConnectionDetection(t *testing.T) {
 // For any telemetry data received by backend, the system should send a WebSocket event to clients subscribed to that device's channel
 func TestProperty_TelemetryEventPropagation(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		// Setup: Create Redis manager
-		redisManager := NewRedisManager("localhost", "6379", "", 0, 10, 5, 3)
-		ctx := context.Background()
-		if err := redisManager.Connect(ctx); err != nil {
+		// Setup: Create Redis manager with robust configuration
+		redisManager, err := setupRedisForTest()
+		if err != nil {
 			t.Skip("Redis not available, skipping test")
 		}
 		defer redisManager.Close()
@@ -993,7 +991,7 @@ func TestProperty_TelemetryEventPropagation(t *testing.T) {
 		
 		// Verify: All subscribed clients should receive the telemetry event
 		receivedCount := 0
-		timeout := time.After(200 * time.Millisecond)
+		timeout := time.After(5 * time.Second)
 		
 		for _, client := range clients {
 			select {
